@@ -1,8 +1,18 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Chess, type Square } from 'chess.js';
 import { Chessboard, type PieceDropHandlerArgs } from 'react-chessboard';
-import { StockfishEngine } from './engine/stockfish';
-import { DEFAULT_PRESET_INDEX, ENGINE_MOVE_TIME_MS, STRENGTH_PRESETS } from './config';
+import { StockfishEngine, type AnalysisInfo } from './engine/stockfish';
+import { pvToSan } from './engine/format';
+import { EvalBar } from './components/EvalBar';
+import { EngineLine } from './components/EngineLine';
+import { MoveList } from './components/MoveList';
+import {
+  ANALYSIS_DEPTH,
+  BEST_LINE_LENGTH,
+  DEFAULT_PRESET_INDEX,
+  ENGINE_MOVE_TIME_MS,
+  STRENGTH_PRESETS,
+} from './config';
 
 type Color = 'white' | 'black';
 type PromotionPiece = 'q' | 'r' | 'b' | 'n';
@@ -20,7 +30,10 @@ function gameOverText(game: Chess, resignedBy: Color | null): string | null {
 export default function App() {
   // chess.js is the single source of truth for board state and legality.
   const gameRef = useRef(new Chess());
+  // Opponent engine (strength-limited) and a separate full-strength engine for analysis,
+  // so the eval bar and best line are never weakened by the opponent's strength setting.
   const engineRef = useRef<StockfishEngine | null>(null);
+  const analyzerRef = useRef<StockfishEngine | null>(null);
   // Incremented on every new game so stale engine replies are discarded.
   const gameIdRef = useRef(0);
 
@@ -31,16 +44,30 @@ export default function App() {
   const [thinking, setThinking] = useState(false);
   const [resignedBy, setResignedBy] = useState<Color | null>(null);
   const [engineReady, setEngineReady] = useState(false);
+  const [analysis, setAnalysis] = useState<(AnalysisInfo & { fen: string }) | null>(null);
 
   useEffect(() => {
     const engine = new StockfishEngine();
     engineRef.current = engine;
     engine.setStrength(STRENGTH_PRESETS[DEFAULT_PRESET_INDEX].strength).then(() => setEngineReady(true));
+    const analyzer = new StockfishEngine();
+    analyzerRef.current = analyzer;
     return () => {
       engine.terminate();
+      analyzer.terminate();
       engineRef.current = null;
+      analyzerRef.current = null;
     };
   }, []);
+
+  // Re-analyze whenever the position changes; any older search is cancelled.
+  useEffect(() => {
+    const analyzer = analyzerRef.current;
+    if (!analyzer) return;
+    analyzer.stopSearch();
+    if (gameRef.current.isGameOver()) return;
+    void analyzer.analyze(fen, ANALYSIS_DEPTH, (info) => setAnalysis({ ...info, fen }));
+  }, [fen]);
 
   const game = gameRef.current;
   const status = gameOverText(game, resignedBy);
@@ -105,13 +132,31 @@ export default function App() {
   else if (myTurn) turnText = game.inCheck() ? 'Your move — you are in check.' : 'Your move.';
   else turnText = 'Stockfish is thinking…';
 
+  // Only show analysis that belongs to the position on the board.
+  const current = analysis?.fen === fen ? analysis : null;
+  // Once the game ends, the bar shows the result instead of an engine score.
+  let barScore = current?.score ?? null;
+  let resultLabel: string | null = null;
+  if (resignedBy) {
+    barScore = { mate: resignedBy === 'white' ? -1 : 1 };
+    resultLabel = resignedBy === 'white' ? '0-1' : '1-0';
+  } else if (game.isCheckmate()) {
+    barScore = { mate: game.turn() === 'w' ? -1 : 1 };
+    resultLabel = game.turn() === 'w' ? '0-1' : '1-0';
+  } else if (game.isDraw()) {
+    barScore = { cp: 0 };
+    resultLabel = '½-½';
+  }
+
   return (
     <div className="app">
       <header>
         <h1>Chess Coach</h1>
       </header>
       <main>
-        <div className="board">
+        <div className="board-wrap">
+          <EvalBar score={barScore} resultLabel={resultLabel} orientation={myColor} />
+          <div className="board">
           <Chessboard
             options={{
               id: 'main-board',
@@ -122,9 +167,19 @@ export default function App() {
               canDragPiece: ({ piece }) => piece.pieceType[0] === myColor[0],
             }}
           />
+          </div>
         </div>
         <aside className="controls">
           <p className={`status${isOver ? ' over' : ''}`}>{turnText}</p>
+
+          <EngineLine
+            score={current?.score ?? null}
+            depth={current?.depth ?? 0}
+            line={current ? pvToSan(fen, current.pv, BEST_LINE_LENGTH) : ''}
+            gameOver={isOver ? 'Game over.' : null}
+          />
+
+          <MoveList moves={game.history()} />
 
           <label>
             Engine strength

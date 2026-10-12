@@ -43,3 +43,52 @@ button { cursor: pointer; }
 button:hover:not(:disabled) { border-color: var(--accent); }
 button:disabled { opacity: 0.5; cursor: default; }
 button.danger { color: var(--danger); }
+
+/* Board + eval bar */
+.board-wrap { display: flex; gap: 8px; width: min(682px, 100%); }
+.board-wrap .board { flex: 1; min-width: 0; }
+.eval-bar {
+  position: relative;
+  width: 34px;
+  flex: none;
+  background: #403d39;
+  border-radius: 4px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column-reverse; /* white fills from the bottom */
+}
+.eval-bar.flipped { flex-direction: column; } /* playing Black: white fills from the top */
+.eval-white { background: #f2f0eb; transition: height 0.35s ease; }
+.eval-label {
+  position: absolute;
+  left: 0;
+  right: 0;
+  text-align: center;
+  font-size: 0.6rem;
+  white-space: nowrap;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  writing-mode: horizontal-tb;
+}
+/* Label sits at White's end when White is ahead, else at Black's end. */
+.eval-label.on-white { bottom: 4px; color: #403d39; }
+.eval-label.on-black { top: 4px; color: #f2f0eb; }
+.eval-bar.flipped .eval-label.on-white { top: 4px; bottom: auto; }
+.eval-bar.flipped .eval-label.on-black { bottom: 4px; top: auto; }
+@media (prefers-reduced-motion: reduce) { .eval-white { transition: none; } }
+
+/* Engine line */
+.engine-line { border: 1px solid var(--border); border-radius: 6px; padding: 8px 10px; }
+.engine-head { display: flex; align-items: baseline; gap: 8px; font-size: 0.85rem; }
+.engine-head .label { color: var(--muted); }
+.engine-score { font-weight: 700; font-variant-numeric: tabular-nums; }
+.engine-depth { margin-left: auto; color: var(--muted); font-size: 0.78rem; }
+.engine-pv { margin: 4px 0 0; font-family: ui-monospace, 'SF Mono', Menlo, monospace; font-size: 0.85rem; min-height: 1.3em; }
+
+/* Move list */
+.move-list { max-height: 240px; overflow-y: auto; border: 1px solid var(--border); border-radius: 6px; padding: 6px 10px; font-variant-numeric: tabular-nums; }
+.move-list .empty { margin: 0; color: var(--muted); font-size: 0.85rem; }
+.move-list ol { list-style: none; margin: 0; padding: 0; }
+.move-list li { display: grid; grid-template-columns: 2.4em 1fr 1fr; padding: 1px 0; font-size: 0.9rem; }
+.move-no { color: var(--muted); }
+.move.current { font-weight: 700; color: var(--accent); }

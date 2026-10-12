@@ -11,7 +11,7 @@ npm run dev     # http://localhost:5173
 
 ## Status
 - [x] Stage 1: playable board vs Stockfish (legal moves, adjustable strength, new game as White/Black, resign)
-- [ ] Stage 2: eval bar, move list, engine best line
+- [x] Stage 2: eval bar, move list, engine best line (separate full-strength analysis worker, depth 16)
 - [ ] Stage 3: coach panel (Express + Haiku)
 - [ ] Stage 4: chat + hint button
 - [ ] Stage 5: SQLite games and mistakes

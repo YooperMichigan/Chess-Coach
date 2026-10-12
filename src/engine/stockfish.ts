@@ -1,5 +1,16 @@
 import { STOCKFISH_WORKER_URL, type EngineStrength } from '../config';
 
+/** Engine score from White's point of view. `mate` is moves to mate (+ White mates, - Black mates). */
+export type Score = { cp: number } | { mate: number };
+
+export interface AnalysisInfo {
+  depth: number;
+  score: Score;
+  pv: string[]; // UCI moves
+}
+
+const INFO_RE = /^info .*\bdepth (\d+)\b.*\bscore (cp|mate) (-?\d+)\b(?! (?:lower|upper)bound).*\bpv (.+)$/;
+
 /**
  * Thin UCI wrapper around the Stockfish WASM Web Worker.
  * Only one search runs at a time; callers await each request.
@@ -10,6 +21,8 @@ export class StockfishEngine {
   // Every public operation is chained onto this queue so UCI commands never interleave.
   private queue: Promise<unknown>;
   private searching = false;
+  // Bumped by stopSearch(); queued searches started under an older value are skipped.
+  private searchGen = 0;
 
   constructor() {
     this.worker = new Worker(STOCKFISH_WORKER_URL);
@@ -70,10 +83,15 @@ export class StockfishEngine {
     });
   }
 
+  /** Ends the running search now and cancels any searches still waiting in the queue. */
+  stopSearch() {
+    this.searchGen++;
+    if (this.searching) this.send('stop');
+  }
+
   /** Abort any running search and reset engine state for a new game. */
   newGame(): Promise<void> {
-    // Sent immediately (not queued) so an in-flight search ends now.
-    if (this.searching) this.send('stop');
+    this.stopSearch();
     return this.enqueue(async () => {
       this.send('ucinewgame');
       await this.isReady();
@@ -91,6 +109,38 @@ export class StockfishEngine {
       this.searching = false;
       const move = line.split(' ')[1];
       return !move || move === '(none)' ? null : move;
+    });
+  }
+
+  /**
+   * Full-depth analysis of `fen`. Calls `onInfo` as each depth completes, scores normalized
+   * to White's view. Resolves when the search ends; returns false if it was cancelled first.
+   */
+  analyze(fen: string, depth: number, onInfo: (info: AnalysisInfo) => void): Promise<boolean> {
+    const gen = this.searchGen;
+    return this.enqueue(async () => {
+      if (gen !== this.searchGen) return false;
+      const sign = fen.split(' ')[1] === 'b' ? -1 : 1;
+      const listener = (line: string) => {
+        if (gen !== this.searchGen) return;
+        const m = INFO_RE.exec(line);
+        if (!m) return;
+        const v = sign * Number(m[3]);
+        onInfo({
+          depth: Number(m[1]),
+          score: m[2] === 'cp' ? { cp: v } : { mate: v },
+          pv: m[4].trim().split(' '),
+        });
+      };
+      this.listeners.add(listener);
+      this.searching = true;
+      const done = this.waitFor((l) => l.startsWith('bestmove'));
+      this.send(`position fen ${fen}`);
+      this.send(`go depth ${depth}`);
+      await done;
+      this.searching = false;
+      this.listeners.delete(listener);
+      return gen === this.searchGen;
     });
   }
 
