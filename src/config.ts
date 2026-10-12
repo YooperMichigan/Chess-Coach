@@ -27,4 +27,5 @@ export const DEFAULT_PRESET_INDEX = 4; // Elo 1500
 // How long the engine thinks before playing its move.
 export const ENGINE_MOVE_TIME_MS = 800;
 
-export const STOCKFISH_WORKER_URL = '/stockfish/stockfish-19-lite-single.js';
+// Relative to the app's base URL so the build works from any path, not just the site root.
+export const STOCKFISH_WORKER_URL = `${import.meta.env.BASE_URL}stockfish/stockfish-19-lite-single.js`;
