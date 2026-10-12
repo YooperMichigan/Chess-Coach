@@ -1,5 +1,5 @@
 import { Chess } from 'chess.js';
-import type { Score } from './stockfish';
+import type { Score } from './stockfish.ts';
 
 /** "+0.34", "-1.20", "M3" (White mates), "-M2" (Black mates). */
 export function formatScore(score: Score): string {

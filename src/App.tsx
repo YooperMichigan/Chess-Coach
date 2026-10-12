@@ -1,14 +1,20 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Chess, type Square } from 'chess.js';
+import { Chess, type Move, type Square } from 'chess.js';
 import { Chessboard, type PieceDropHandlerArgs } from 'react-chessboard';
 import { StockfishEngine, type AnalysisInfo } from './engine/stockfish';
 import { pvToSan } from './engine/format';
 import { EvalBar } from './components/EvalBar';
 import { EngineLine } from './components/EngineLine';
 import { MoveList } from './components/MoveList';
+import { CoachPanel, type CoachNote } from './components/CoachPanel';
+import { requestComment } from './coach/api';
+import { detectTrigger, numberMoves, toPlayerScore } from './coach/triggers';
+import { buildCoachRequest, type PlayerMove } from './coach/request';
+import type { CoachTrigger } from '../shared/coach-types';
 import {
   ANALYSIS_DEPTH,
   BEST_LINE_LENGTH,
+  COACH,
   DEFAULT_PRESET_INDEX,
   ENGINE_MOVE_TIME_MS,
   STRENGTH_PRESETS,
@@ -45,6 +51,22 @@ export default function App() {
   const [resignedBy, setResignedBy] = useState<Color | null>(null);
   const [engineReady, setEngineReady] = useState(false);
   const [analysis, setAnalysis] = useState<(AnalysisInfo & { fen: string }) | null>(null);
+  // Deepest analysis seen per position, and the last position whose analysis finished.
+  // The coach and the opponent both wait for the finished analysis.
+  const analysesRef = useRef(new Map<string, AnalysisInfo>());
+  const [analyzedFen, setAnalyzedFen] = useState<string | null>(null);
+
+  // Coach state. Refs hold what the async coach logic reads; state drives rendering.
+  const [notes, setNotes] = useState<CoachNote[]>([]);
+  const [coachBusy, setCoachBusy] = useState(false);
+  const [callsUsed, setCallsUsed] = useState(0);
+  const [periodicOn, setPeriodicOn] = useState(COACH.periodicDefaultOn);
+  const coachBusyRef = useRef(false);
+  const callsUsedRef = useRef(0);
+  const pendingReviewRef = useRef<PlayerMove | null>(null); // awaiting analysis
+  const lastPlayerMoveRef = useRef<PlayerMove | null>(null);
+  const playerMoveCountRef = useRef(0);
+  const noteIdRef = useRef(0);
 
   useEffect(() => {
     const engine = new StockfishEngine();
@@ -66,7 +88,15 @@ export default function App() {
     if (!analyzer) return;
     analyzer.stopSearch();
     if (gameRef.current.isGameOver()) return;
-    void analyzer.analyze(fen, ANALYSIS_DEPTH, (info) => setAnalysis({ ...info, fen }));
+    const analyses = analysesRef.current;
+    void analyzer
+      .analyze(fen, ANALYSIS_DEPTH, (info) => {
+        analyses.set(fen, info);
+        setAnalysis({ ...info, fen });
+      })
+      .then((finished) => {
+        if (finished) setAnalyzedFen(fen);
+      });
   }, [fen]);
 
   const game = gameRef.current;
@@ -90,21 +120,89 @@ export default function App() {
     }
   }, []);
 
-  // Let the engine move whenever it's its turn.
+  // Let the engine move once the position after your move has been fully analyzed,
+  // so the coach always gets complete engine data for your move.
+  const positionAnalyzed = analyzedFen === fen;
   useEffect(() => {
-    if (engineReady && !isOver && !myTurn && !thinking) void engineMove();
-  }, [engineReady, fen, isOver, myTurn, thinking, engineMove]);
+    if (engineReady && !isOver && !myTurn && !thinking && positionAnalyzed) void engineMove();
+  }, [engineReady, fen, isOver, myTurn, thinking, positionAnalyzed, engineMove]);
+
+  async function callCoach(m: PlayerMove, trigger: CoachTrigger) {
+    // One call at a time, and never past the per-game cap.
+    if (coachBusyRef.current || callsUsedRef.current >= COACH.maxCallsPerGame) return;
+    const id = gameIdRef.current;
+    const request = buildCoachRequest(m, trigger, {
+      history: gameRef.current.history(),
+      myColor,
+      analysisOf: (f) => analysesRef.current.get(f),
+      engineStrength: STRENGTH_PRESETS[presetIndex].label,
+      playerLevel: COACH.playerLevel,
+      recentPlies: COACH.recentPlies,
+      bestLineLength: BEST_LINE_LENGTH,
+    });
+    const moveLabel = numberMoves([m.san], m.ply);
+    coachBusyRef.current = true;
+    callsUsedRef.current++;
+    setCoachBusy(true);
+    setCallsUsed(callsUsedRef.current);
+    try {
+      const res = await requestComment(request);
+      if (id !== gameIdRef.current) return;
+      if (res.comment) {
+        setNotes((n) => [...n, { id: ++noteIdRef.current, moveLabel, trigger, text: res.comment, category: res.category }]);
+      }
+    } catch (err) {
+      if (id !== gameIdRef.current) return;
+      const text = err instanceof Error ? err.message : 'The coach request failed.';
+      setNotes((n) => [...n, { id: ++noteIdRef.current, moveLabel, trigger, text, category: null, error: true }]);
+    } finally {
+      if (id === gameIdRef.current) {
+        coachBusyRef.current = false;
+        setCoachBusy(false);
+      }
+    }
+  }
+
+  // When analysis of the position after your move finishes, decide whether the coach speaks.
+  useEffect(() => {
+    const m = pendingReviewRef.current;
+    if (!m || analyzedFen !== m.fenAfter) return;
+    pendingReviewRef.current = null;
+    const before = analysesRef.current.get(m.fenBefore);
+    const after = analysesRef.current.get(m.fenAfter);
+    const trigger = detectTrigger(
+      before ? toPlayerScore(before.score, myColor) : null,
+      after ? toPlayerScore(after.score, myColor) : null,
+      {
+        thresholdCp: COACH.swingThresholdCp,
+        periodicDue: periodicOn && playerMoveCountRef.current % COACH.periodicEvery === 0,
+      },
+    );
+    if (trigger) void callCoach(m, trigger);
+    // Runs only when an analysis finishes; callCoach reads the latest settings from refs and state.
+  }, [analyzedFen]);
 
   function onPieceDrop({ sourceSquare, targetSquare }: PieceDropHandlerArgs): boolean {
     if (!targetSquare || isOver || !myTurn || thinking) return false;
+    let move: Move;
     try {
       const piece = game.get(sourceSquare as Square);
       const isPromotion =
         piece?.type === 'p' && (targetSquare[1] === '8' || targetSquare[1] === '1');
-      game.move({ from: sourceSquare, to: targetSquare, promotion: isPromotion ? promotion : undefined });
+      move = game.move({ from: sourceSquare, to: targetSquare, promotion: isPromotion ? promotion : undefined });
     } catch {
       return false; // illegal move — chess.js throws
     }
+    const record: PlayerMove = {
+      ply: game.history().length - 1,
+      san: move.san,
+      uci: move.lan,
+      fenBefore: move.before,
+      fenAfter: move.after,
+    };
+    playerMoveCountRef.current++;
+    pendingReviewRef.current = record;
+    lastPlayerMoveRef.current = record;
     setFen(game.fen());
     return true;
   }
@@ -115,6 +213,15 @@ export default function App() {
     gameRef.current = new Chess();
     setResignedBy(null);
     setMyColor(color);
+    analysesRef.current.clear();
+    pendingReviewRef.current = null;
+    lastPlayerMoveRef.current = null;
+    playerMoveCountRef.current = 0;
+    coachBusyRef.current = false;
+    callsUsedRef.current = 0;
+    setCoachBusy(false);
+    setCallsUsed(0);
+    setNotes([]);
     await engineRef.current?.newGame();
     setFen(gameRef.current.fen());
   }
@@ -171,6 +278,17 @@ export default function App() {
         </div>
         <aside className="controls">
           <p className={`status${isOver ? ' over' : ''}`}>{turnText}</p>
+
+          <CoachPanel
+            notes={notes}
+            busy={coachBusy}
+            callsUsed={callsUsed}
+            callsMax={COACH.maxCallsPerGame}
+            canAsk={lastPlayerMoveRef.current !== null}
+            periodicOn={periodicOn}
+            onAsk={() => lastPlayerMoveRef.current && void callCoach(lastPlayerMoveRef.current, 'ask')}
+            onTogglePeriodic={setPeriodicOn}
+          />
 
           <EngineLine
             score={current?.score ?? null}

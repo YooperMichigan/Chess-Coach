@@ -35,3 +35,18 @@ export const ANALYSIS_DEPTH = 16;
 
 // How many moves of the engine's best line to display.
 export const BEST_LINE_LENGTH = 5;
+
+// ---- Coach (Stage 3) ----
+export const COACH = {
+  // Ask the coach automatically when your move loses more than this many centipawns.
+  swingThresholdCp: 80,
+  // Brief strategic note every N of your moves (toggle in the coach panel).
+  periodicEvery: 5,
+  periodicDefaultOn: true,
+  // Hard cap on coach calls per game, to keep cost at pennies.
+  maxCallsPerGame: 25,
+  // How many recent half-moves to send (6-10).
+  recentPlies: 10,
+  // Tells the coach how to pitch its advice. Edit to describe yourself, e.g. "about 1200 online".
+  playerLevel: 'not specified',
+};

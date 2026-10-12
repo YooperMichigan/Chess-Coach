@@ -112,8 +112,10 @@ Each press escalates one level for the current position. Reset on the next move.
 
 ## Commands (fill in as the project is created)
 - Install: `npm install`
-- Dev: `npm run dev`
+- Dev: `npm run dev` (Vite and the Express coach server together)
 - Server: `npm run server`
+- Coach smoke test: `npm run coach:test` (server must be running; `COACH_DRY_RUN=1` on the server skips the API call)
+- Typecheck: `npm run typecheck`
 - Env: copy `.env.example` to `.env` and add `ANTHROPIC_API_KEY`
 
 ## Things to flag to me, not decide silently
