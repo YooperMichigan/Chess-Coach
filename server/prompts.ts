@@ -3,7 +3,10 @@ import type {
   CoachCommentRequest,
   CoachHintRequest,
   EngineEval,
+  MistakeSummary,
+  PlayerScore,
   PositionInfo,
+  ReviewRequest,
 } from '../shared/coach-types.ts';
 
 export const MISTAKE_CATEGORIES = [
@@ -136,5 +139,79 @@ export function buildHintPrompt(r: CoachHintRequest): string {
   if (r.previousHints.length) {
     lines.push('Hints already given for this position:', ...r.previousHints.map((h, i) => `  Level ${i + 1}: ${h}`));
   }
+  return lines.join('\n');
+}
+
+export const REVIEW_SYSTEM = `You are a chess coach reviewing a finished game with your student, who played against the Stockfish engine. Speak to them directly, as "you".
+
+${GROUND_RULES}
+
+This is the post-game review, so you may name the engine's best moves and lines. Still use only the lines given; do not extend them or analyse further yourself.
+
+For each critical moment (the student's largest evaluation swings, found by Stockfish):
+- Explain in plain language, in 2-4 sentences, what went wrong and the idea behind the engine's preferred move: a missed tactic, a weakened square, king safety, piece activity, pawn structure, and so on.
+- Tag it with one category: tactical-oversight, opening, positional, endgame, time, or blunder-check (a move played without checking the opponent's forcing replies). Use "none" only if the swing was not really the student's mistake.
+
+Then write:
+- summary: 2-3 sentences on how this game went.
+- recurring: the student's recurring weaknesses, using this game together with the category counts from their recent games. Be specific and honest; if there is not enough history yet, say so.
+- focus: one concrete habit to practise in the next game.`;
+
+export const REVIEW_SCHEMA = {
+  type: 'object',
+  properties: {
+    moments: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          index: { type: 'integer' },
+          explanation: { type: 'string' },
+          category: { type: 'string', enum: [...MISTAKE_CATEGORIES, 'none'] },
+        },
+        required: ['index', 'explanation', 'category'],
+        additionalProperties: false,
+      },
+    },
+    summary: { type: 'string' },
+    recurring: { type: 'string' },
+    focus: { type: 'string' },
+  },
+  required: ['moments', 'summary', 'recurring', 'focus'],
+  additionalProperties: false,
+};
+
+function formatScore(s: PlayerScore | null): string {
+  return formatEval(s ? { score: s, depth: 0 } : null).replace(/ \(depth 0\)$/, '');
+}
+
+export function buildReviewPrompt(r: ReviewRequest, history: MistakeSummary): string {
+  const lines = [
+    `Student played: ${r.myColor}. Result: ${r.result}. Student level: ${r.playerLevel}. Engine opponent strength: ${r.engineStrength}.`,
+    '',
+    'Game (PGN):',
+    r.pgn,
+    '',
+  ];
+  if (r.moments.length === 0) {
+    lines.push('Stockfish found no significant evaluation swings in the student\'s moves this game.');
+  } else {
+    lines.push(`Critical moments (${r.moments.length}), largest swing first:`);
+    r.moments.forEach((m, i) => {
+      lines.push(
+        '',
+        `Moment ${i}: move ${m.moveNumber}, the student played ${m.myMove}.`,
+        `  Position before the move (FEN): ${m.fen}`,
+        `  Evaluation before: ${formatScore(m.evalBefore)}. After: ${formatScore(m.evalAfter)}.`,
+        `  Stockfish's best move: ${m.bestMove ?? 'missing'}. Best line: ${m.bestLine || 'missing'}`,
+        `  Stockfish's line after the student's move: ${m.replyLine || 'missing'}`,
+      );
+    });
+  }
+  lines.push('', `Mistake categories over the student's last ${history.lastN} saved games (including this one):`);
+  if (history.categories.length === 0) lines.push('  none tagged yet');
+  for (const c of history.categories) lines.push(`  ${c.category}: ${c.count}`);
+  if (history.uncategorized) lines.push(`  untagged mistakes: ${history.uncategorized}`);
+  lines.push('', `Return one entry in "moments" for each critical moment, using its index.`);
   return lines.join('\n');
 }

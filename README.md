@@ -17,6 +17,8 @@ Other commands:
 
 The coach panel shows the estimated API cost of the current game, and the history panel shows the total spent in the app and this month. Every Claude call is recorded in the `api_usage` table. Costs are estimates from token counts and the prices in `server/config.ts`; the Claude Console shows what you are actually billed.
 
+After a game ends, press **Review this game**. Reviews are stored with the game, so opening one again costs nothing. A review costs a few cents (Sonnet).
+
 Games are saved automatically when they end (checkmate, draw or resign). A game you abandon with "New game" after making at least one move is saved as unfinished (`*`). The database is `data/chess-coach.db` (gitignored); back it up by copying that file.
 
 Coach settings (eval-drop threshold, check-in interval, per-game cap, your level) are in `src/config.ts` under `COACH`. Model IDs are in `server/config.ts`.
@@ -27,7 +29,7 @@ Coach settings (eval-drop threshold, check-in interval, per-game cap, your level
 - [x] Stage 3: coach panel (Express + Haiku): comments on eval drops over 80cp, missed mates, every 5th move (toggle), and Ask coach; 25 calls per game cap
 - [x] Stage 4: chat box and a three-level hint button (nudge, where to look, show move), resetting each move
 - [x] Stage 5: games and mistakes saved to SQLite (`data/chess-coach.db`), with a "Your history" panel showing the most common mistake types over the last 10 games
-- [ ] Stage 6: post-game review (Sonnet)
+- [x] Stage 6: post-game review: a Stockfish pass finds your 3-5 costliest moves (by lost winning chances), and Sonnet explains each one, summarises the game and your recurring weaknesses, and suggests one thing to work on
 
 ## License note
 Stockfish is GPLv3. Fine for personal use; revisit before sharing or publishing.

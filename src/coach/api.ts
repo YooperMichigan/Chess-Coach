@@ -5,7 +5,9 @@ import type {
   CoachCommentResponse,
   CoachHintRequest,
   CoachHintResponse,
+  GameReview,
   MistakeSummary,
+  ReviewRequest,
   SaveGameRequest,
   SaveGameResponse,
   UsageSummary,
@@ -33,6 +35,7 @@ export const requestComment = (body: CoachCommentRequest) => post<CoachCommentRe
 export const requestChat = (body: CoachChatRequest) => post<CoachChatResponse>('/api/coach/chat', body);
 export const requestHint = (body: CoachHintRequest) => post<CoachHintResponse>('/api/coach/hint', body);
 
+export const requestReview = (body: ReviewRequest) => post<GameReview>('/api/coach/review', body);
 export const saveGame = (body: SaveGameRequest) => post<SaveGameResponse>('/api/games', body);
 
 export async function fetchMistakeSummary(lastN: number): Promise<MistakeSummary> {

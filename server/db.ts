@@ -3,6 +3,7 @@ import { mkdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type {
+  GameReview,
   MistakeCategory,
   MistakeSummary,
   PlayerScore,
@@ -61,6 +62,10 @@ db.exec(`
 const gameColumns = db.prepare(`PRAGMA table_info(games)`).all() as { name: string }[];
 if (!gameColumns.some((c) => c.name === 'coach_cost_usd')) {
   db.exec(`ALTER TABLE games ADD COLUMN coach_cost_usd REAL NOT NULL DEFAULT 0`);
+}
+// The Stage 6 review is stored with its game so it can be shown again without paying twice.
+if (!gameColumns.some((c) => c.name === 'review_json')) {
+  db.exec(`ALTER TABLE games ADD COLUMN review_json TEXT`);
 }
 
 export function scoreToCp(s: PlayerScore | null): number | null {
@@ -161,5 +166,47 @@ const usageTotals = db.prepare(
 export function usageSummary(): UsageSummary {
   return usageTotals.get() as UsageSummary;
 }
+
+export function gameExists(gameId: number): boolean {
+  return db.prepare(`SELECT 1 FROM games WHERE id = ?`).get(gameId) !== undefined;
+}
+
+export function storedReview(gameId: number): GameReview | null {
+  const row = db.prepare(`SELECT review_json FROM games WHERE id = ?`).get(gameId) as { review_json: string | null } | undefined;
+  return row?.review_json ? (JSON.parse(row.review_json) as GameReview) : null;
+}
+
+const findMistake = db.prepare(`SELECT id FROM mistakes WHERE game_id = ? AND move_number = ? AND my_move = ?`);
+const updateMistake = db.prepare(`UPDATE mistakes SET category = @category, coach_note = @coachNote WHERE id = @id`);
+
+/**
+ * Stores a review: its tags and explanations replace the live ones on matching mistakes, and
+ * moments the live coach did not flag become new mistakes. The review cost is added to the game.
+ */
+export const saveReview = db.transaction((review: GameReview) => {
+  for (const m of review.moments) {
+    const existing = findMistake.get(review.gameId, m.moveNumber, m.myMove) as { id: number } | undefined;
+    if (existing) {
+      updateMistake.run({ id: existing.id, category: m.category, coachNote: m.explanation });
+    } else {
+      insertMistake.run({
+        gameId: review.gameId,
+        moveNumber: m.moveNumber,
+        fen: m.fen,
+        myMove: m.myMove,
+        bestMove: m.bestMove,
+        evalBefore: scoreToCp(m.evalBefore),
+        evalAfter: scoreToCp(m.evalAfter),
+        category: m.category,
+        coachNote: m.explanation,
+      });
+    }
+  }
+  db.prepare(`UPDATE games SET review_json = ?, coach_cost_usd = coach_cost_usd + ? WHERE id = ?`).run(
+    JSON.stringify({ ...review, costUsd: 0 }), // shown again later at no cost
+    review.costUsd,
+    review.gameId,
+  );
+});
 
 export const dbPath = DB_PATH;

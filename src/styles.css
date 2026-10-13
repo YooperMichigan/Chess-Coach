@@ -140,3 +140,37 @@ label.inline { flex-direction: row; align-items: center; gap: 6px; }
 .save-note { margin: 0; font-size: 0.85rem; color: var(--accent); }
 .history-error { margin: 0; font-size: 0.85rem; color: var(--danger); }
 .spend { margin: 0; font-size: 0.85rem; font-variant-numeric: tabular-nums; }
+
+/* Stage 6: post-game review */
+button.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+button.primary:hover:not(:disabled) { filter: brightness(1.08); }
+.review-cta { display: flex; flex-direction: column; gap: 4px; }
+.review-hint { font-size: 0.8rem; color: var(--muted); }
+.review {
+  margin-top: 24px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.review h2 { margin: 0; font-size: 1.15rem; }
+.review h3 { margin: 0; font-size: 0.95rem; }
+.review p { margin: 0; line-height: 1.5; }
+.review-status { color: var(--muted); }
+.review-error { color: var(--danger); }
+.review-summary { max-width: 70ch; }
+.review-moments { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 16px; }
+.review-moment { display: flex; gap: 16px; align-items: flex-start; flex-wrap: wrap; border-top: 1px solid var(--border); padding-top: 16px; }
+.review-board { width: 220px; max-width: 100%; flex: none; }
+.review-text { flex: 1 1 280px; min-width: 0; display: flex; flex-direction: column; gap: 6px; max-width: 70ch; }
+.review-text header { display: flex; flex-wrap: wrap; gap: 8px; align-items: baseline; font-size: 0.85rem; }
+.review-eval { color: var(--muted); font-variant-numeric: tabular-nums; }
+.review-best { font-size: 0.9rem; }
+.review-line { color: var(--muted); font-family: ui-monospace, 'SF Mono', Menlo, monospace; font-size: 0.82rem; }
+.swatch { display: inline-block; width: 10px; height: 10px; border-radius: 2px; vertical-align: middle; }
+.swatch.best { background: rgba(46, 139, 87, 0.85); }
+.review-wrap { border-top: 1px solid var(--border); padding-top: 12px; display: flex; flex-direction: column; gap: 6px; max-width: 70ch; }
+.review-cost { font-size: 0.8rem; color: var(--muted); font-variant-numeric: tabular-nums; }

@@ -137,3 +137,44 @@ export interface UsageSummary {
   monthUsd: number; // current calendar month (UTC)
   calls: number;
 }
+
+// ---- Stage 6: post-game review ----
+
+/** One of the biggest eval swings in the game, found by a Stockfish pass over every move. */
+export interface CriticalMoment {
+  ply: number; // index in the game history
+  moveNumber: number; // full-move number
+  fen: string; // position before the player's move
+  myMove: string; // SAN
+  myMoveUci: string;
+  bestMove: string | null; // Stockfish's choice in that position, SAN
+  bestMoveUci: string | null;
+  bestLine: string; // Stockfish's line from the position before the move
+  replyLine: string; // Stockfish's line after the player's move (how it gets punished)
+  evalBefore: PlayerScore | null;
+  evalAfter: PlayerScore | null;
+}
+
+export interface ReviewRequest {
+  gameId: number; // the saved game
+  pgn: string; // the full game is allowed for the post-game review
+  myColor: 'white' | 'black';
+  result: GameResult;
+  engineStrength: string;
+  playerLevel: string;
+  moments: CriticalMoment[]; // 0-5, largest swings first
+}
+
+export interface ReviewedMoment extends CriticalMoment {
+  explanation: string;
+  category: MistakeCategory | null;
+}
+
+export interface GameReview {
+  gameId: number;
+  moments: ReviewedMoment[];
+  summary: string; // what happened in this game
+  recurring: string; // recurring weaknesses across recent games
+  focus: string; // one thing to work on next game
+  costUsd: number; // cost of this review call (0 if it was already stored)
+}

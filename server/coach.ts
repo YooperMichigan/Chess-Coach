@@ -6,7 +6,9 @@ import type {
   CoachCommentResponse,
   CoachHintRequest,
   CoachHintResponse,
+  GameReview,
   MistakeCategory,
+  ReviewRequest,
 } from '../shared/coach-types.ts';
 import {
   CHAT_HISTORY_TURNS,
@@ -17,6 +19,9 @@ import {
   LIVE_EFFORT,
   MODELS,
   PRICING,
+  REVIEW_EFFORT,
+  REVIEW_HISTORY_GAMES,
+  REVIEW_MAX_TOKENS,
 } from './config.ts';
 import {
   CHAT_SYSTEM,
@@ -24,11 +29,14 @@ import {
   COMMENT_SCHEMA,
   HINT_SYSTEM,
   MISTAKE_CATEGORIES,
+  REVIEW_SCHEMA,
+  REVIEW_SYSTEM,
   buildChatPrompt,
   buildCommentPrompt,
   buildHintPrompt,
+  buildReviewPrompt,
 } from './prompts.ts';
-import { recordUsage } from './db.ts';
+import { mistakeSummary, recordUsage, saveReview, storedReview } from './db.ts';
 
 let client: Anthropic | null = null;
 function getClient(): Anthropic {
@@ -67,28 +75,40 @@ function logUsage(route: string, model: string, usage: Anthropic.Usage): number 
   return cost;
 }
 
-/** One Haiku/Sonnet call with shared error handling and usage logging. Returns the text output. */
-async function callClaude(
-  route: string,
-  params: Omit<Anthropic.MessageCreateParamsNonStreaming, 'model'> & { model: string },
-): Promise<{ text: string; costUsd: number }> {
-  let message: Anthropic.Message;
-  try {
-    message = await getClient().messages.create(params);
-  } catch (err) {
-    throw toCoachError(err);
-  }
-  const costUsd = logUsage(route, params.model, message.usage);
+/** The fields both the regular and the beta Messages API responses share. */
+interface ClaudeReply {
+  model: string;
+  stop_reason: string | null;
+  usage: { input_tokens: number; output_tokens: number };
+  content: Array<{ type: string; text?: string }>;
+}
+
+/** Logs usage, checks the stop reason, and returns the response text and its cost. */
+function finish(route: string, message: ClaudeReply): { text: string; costUsd: number } {
+  // Priced by the model that actually answered (a refusal fallback may have served it).
+  const costUsd = logUsage(route, message.model, message.usage as Anthropic.Usage);
   if (message.stop_reason === 'refusal') throw new CoachError(502, 'The coach declined to answer this one.');
   if (message.stop_reason === 'max_tokens') throw new CoachError(502, 'The coach ran out of room to answer. Try again.');
-  // Haiku 5.5 may return thinking blocks first; read only the text blocks.
+  // Thinking blocks may come first; read only the text blocks.
   const text = message.content
-    .filter((b): b is Anthropic.TextBlock => b.type === 'text')
-    .map((b) => b.text)
+    .filter((b) => b.type === 'text')
+    .map((b) => b.text ?? '')
     .join('')
     .trim();
   if (!text) throw new CoachError(502, 'The coach returned no text.');
   return { text, costUsd };
+}
+
+/** One Haiku call with shared error handling and usage logging. */
+async function callClaude(
+  route: string,
+  params: Omit<Anthropic.MessageCreateParamsNonStreaming, 'model'> & { model: string },
+): Promise<{ text: string; costUsd: number }> {
+  try {
+    return finish(route, await getClient().messages.create(params));
+  } catch (err) {
+    throw toCoachError(err);
+  }
 }
 
 function dryRun(route: string, prompt: string): boolean {
@@ -140,6 +160,62 @@ export async function coachChat(req: CoachChatRequest): Promise<CoachChatRespons
     messages: [...history, { role: 'user', content: prompt }],
   });
   return { reply, costUsd };
+}
+
+export async function coachReview(req: ReviewRequest): Promise<GameReview> {
+  const stored = storedReview(req.gameId);
+  if (stored) return stored; // already reviewed: show it again at no cost
+  const history = mistakeSummary(REVIEW_HISTORY_GAMES);
+  const prompt = buildReviewPrompt(req, history);
+  let parsed: { moments: { index: number; explanation: string; category: string }[]; summary: string; recurring: string; focus: string };
+  let costUsd = 0;
+  if (dryRun('review', prompt)) {
+    parsed = {
+      moments: req.moments.map((_, index) => ({ index, explanation: '(dry run: no API call made)', category: 'tactical-oversight' })),
+      summary: '(dry run summary)',
+      recurring: '(dry run recurring weaknesses)',
+      focus: '(dry run focus)',
+    };
+  } else {
+    let result: { text: string; costUsd: number };
+    try {
+      // Sonnet 5.5 via the beta endpoint so a policy decline is retried server-side on
+      // Anthropic's recommended fallback model instead of failing the review.
+      const message = await getClient().beta.messages.create({
+        model: MODELS.review,
+        betas: ['server-side-fallback-2026-07-01'],
+        fallbacks: 'default',
+        max_tokens: REVIEW_MAX_TOKENS,
+        system: REVIEW_SYSTEM,
+        output_config: { effort: REVIEW_EFFORT, format: { type: 'json_schema', schema: REVIEW_SCHEMA } },
+        messages: [{ role: 'user', content: prompt }],
+      });
+      result = finish('review', message);
+    } catch (err) {
+      throw toCoachError(err);
+    }
+    costUsd = result.costUsd;
+    try {
+      parsed = JSON.parse(result.text);
+    } catch {
+      throw new CoachError(502, 'The review came back malformed. Try again.');
+    }
+  }
+  const byIndex = new Map(parsed.moments.map((m) => [m.index, m]));
+  const review: GameReview = {
+    gameId: req.gameId,
+    moments: req.moments.map((m, i) => {
+      const r = byIndex.get(i);
+      const category = r && (MISTAKE_CATEGORIES as readonly string[]).includes(r.category) ? (r.category as MistakeCategory) : null;
+      return { ...m, explanation: r?.explanation.trim() || 'No explanation was returned for this moment.', category };
+    }),
+    summary: parsed.summary.trim(),
+    recurring: parsed.recurring.trim(),
+    focus: parsed.focus.trim(),
+    costUsd,
+  };
+  saveReview(review);
+  return review;
 }
 
 export async function coachHint(req: CoachHintRequest): Promise<CoachHintResponse> {

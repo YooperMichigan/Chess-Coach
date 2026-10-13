@@ -14,6 +14,12 @@ export const CHAT_MAX_TOKENS = 1500;
 export const HINT_MAX_TOKENS = 1024;
 export const LIVE_EFFORT = 'low' as const; // chat and hints
 
+// Post-game review (Sonnet). Medium effort keeps a review to a few cents.
+export const REVIEW_MAX_TOKENS = 8000;
+export const REVIEW_EFFORT = 'medium' as const;
+// Recent games whose mistake categories feed the recurring-weakness summary.
+export const REVIEW_HISTORY_GAMES = 10;
+
 // Earlier chat turns sent with each question (token discipline).
 export const CHAT_HISTORY_TURNS = 6;
 

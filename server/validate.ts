@@ -8,7 +8,9 @@ import type {
   MistakeCategory,
   MistakeRecord,
   PlayerScore,
+  CriticalMoment,
   PositionInfo,
+  ReviewRequest,
   SaveGameRequest,
 } from '../shared/coach-types.ts';
 
@@ -158,5 +160,39 @@ export function parseSaveGameRequest(body: unknown): SaveGameRequest {
     myColor: color(b.myColor),
     mistakes: b.mistakes.map(parseMistake),
     coachCostUsd: typeof b.coachCostUsd === 'number' && b.coachCostUsd >= 0 && b.coachCostUsd < 100 ? b.coachCostUsd : 0,
+  };
+}
+
+function parseMoment(v: unknown): CriticalMoment {
+  const m = (v ?? {}) as Record<string, unknown>;
+  if (typeof m.ply !== 'number' || typeof m.moveNumber !== 'number') throw new Error('Invalid moment');
+  return {
+    ply: Math.floor(m.ply),
+    moveNumber: Math.floor(m.moveNumber),
+    fen: str(m.fen, 100, 'moment fen'),
+    myMove: str(m.myMove, 10, 'moment myMove'),
+    myMoveUci: str(m.myMoveUci, 6, 'moment myMoveUci'),
+    bestMove: nullableStr(m.bestMove, 10, 'moment bestMove'),
+    bestMoveUci: nullableStr(m.bestMoveUci, 6, 'moment bestMoveUci'),
+    bestLine: str(m.bestLine, 200, 'moment bestLine'),
+    replyLine: str(m.replyLine, 200, 'moment replyLine'),
+    evalBefore: scoreOrNull(m.evalBefore, 'moment evalBefore'),
+    evalAfter: scoreOrNull(m.evalAfter, 'moment evalAfter'),
+  };
+}
+
+export function parseReviewRequest(body: unknown): ReviewRequest {
+  const b = (body ?? {}) as Record<string, unknown>;
+  if (typeof b.gameId !== 'number' || !Number.isInteger(b.gameId)) throw new Error('Invalid gameId');
+  if (!RESULTS.includes(b.result as string)) throw new Error('Invalid result');
+  if (!Array.isArray(b.moments) || b.moments.length > 5) throw new Error('Invalid moments');
+  return {
+    gameId: b.gameId,
+    pgn: str(b.pgn, 20_000, 'pgn'),
+    myColor: color(b.myColor),
+    result: b.result as ReviewRequest['result'],
+    engineStrength: str(b.engineStrength, 40, 'engineStrength'),
+    playerLevel: str(b.playerLevel, 60, 'playerLevel'),
+    moments: b.moments.map(parseMoment),
   };
 }

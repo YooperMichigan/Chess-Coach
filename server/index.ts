@@ -1,9 +1,15 @@
 import 'dotenv/config';
 import express from 'express';
 import { PORT } from './config.ts';
-import { CoachError, coachChat, coachComment, coachHint } from './coach.ts';
-import { parseChatRequest, parseCommentRequest, parseHintRequest, parseSaveGameRequest } from './validate.ts';
-import { dbPath, gameMistakes, mistakeSummary, recentGames, saveGame, usageSummary } from './db.ts';
+import { CoachError, coachChat, coachComment, coachHint, coachReview } from './coach.ts';
+import {
+  parseChatRequest,
+  parseCommentRequest,
+  parseHintRequest,
+  parseReviewRequest,
+  parseSaveGameRequest,
+} from './validate.ts';
+import { dbPath, gameExists, gameMistakes, mistakeSummary, recentGames, saveGame, usageSummary } from './db.ts';
 
 const app = express();
 app.use(express.json({ limit: '16kb' }));
@@ -31,6 +37,17 @@ function coachRoute<Req, Res>(parse: (body: unknown) => Req, run: (req: Req) => 
 app.post('/api/coach/comment', coachRoute(parseCommentRequest, coachComment));
 app.post('/api/coach/chat', coachRoute(parseChatRequest, coachChat));
 app.post('/api/coach/hint', coachRoute(parseHintRequest, coachHint));
+app.post(
+  '/api/coach/review',
+  coachRoute(
+    (body) => {
+      const r = parseReviewRequest(body);
+      if (!gameExists(r.gameId)) throw new Error('That game is not saved yet');
+      return r;
+    },
+    coachReview,
+  ),
+);
 
 // ---- Saved games and mistakes (SQLite) ----
 

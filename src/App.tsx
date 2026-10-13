@@ -7,7 +7,9 @@ import { EvalBar } from './components/EvalBar';
 import { EngineLine } from './components/EngineLine';
 import { MoveList } from './components/MoveList';
 import { CoachPanel, type CoachNote } from './components/CoachPanel';
-import { requestChat, requestComment, requestHint, saveGame } from './coach/api';
+import { requestChat, requestComment, requestHint, requestReview, saveGame } from './coach/api';
+import { ReviewPanel, type ReviewState } from './components/ReviewPanel';
+import { analyzePlayerMoves, pickCriticalMoments } from './review/criticalMoments';
 import { HistoryPanel } from './components/HistoryPanel';
 import { detectTrigger, numberMoves, toPlayerScore } from './coach/triggers';
 import {
@@ -110,6 +112,10 @@ export default function App() {
   // Estimated Claude API cost of this game's coach calls (from the server's token counts).
   const [gameCost, setGameCost] = useState(0);
   const gameCostRef = useRef(0);
+
+  // Post-game review: available once the finished game is saved (it needs the game's id).
+  const [savedGameId, setSavedGameId] = useState<number | null>(null);
+  const [review, setReview] = useState<ReviewState>({ kind: 'idle' });
 
   useEffect(() => {
     const engine = new StockfishEngine();
@@ -339,8 +345,10 @@ export default function App() {
 
   async function persistGame(record: SaveGameRequest) {
     const n = record.mistakes.length;
+    const id = gameIdRef.current;
     try {
-      await saveGame(record);
+      const { gameId } = await saveGame(record);
+      if (record.result !== '*' && id === gameIdRef.current) setSavedGameId(gameId);
       setSaveNote(`Game saved${n ? ` with ${n} mistake${n === 1 ? '' : 's'}` : ''}.`);
       setHistoryKey((k) => k + 1);
     } catch (err) {
@@ -355,6 +363,62 @@ export default function App() {
     void persistGame(gameRecord(resultCode(gameRef.current, resignedBy)));
     // gameRecord reads the finished game from refs and current settings.
   }, [isOver, coachBusy]);
+
+  /** Analyzes one position at full depth for the review, keeping the result in the cache. */
+  async function analyzeForReview(fenToAnalyze: string): Promise<AnalysisInfo | null> {
+    const analyzer = analyzerRef.current;
+    if (!analyzer) return null;
+    let last: AnalysisInfo | null = null;
+    const finished = await analyzer.analyze(fenToAnalyze, ANALYSIS_DEPTH, (info) => (last = info));
+    if (!finished || !last) return null;
+    analysesRef.current.set(fenToAnalyze, last);
+    return last;
+  }
+
+  async function startReview() {
+    if (savedGameId === null || review.kind === 'analyzing' || review.kind === 'asking') return;
+    const id = gameIdRef.current;
+    const g = gameRef.current;
+    setReview({ kind: 'analyzing', done: 0, total: 0 });
+    requestAnimationFrame(() => document.getElementById('review')?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
+    // 1. Stockfish pass over every one of your moves (reusing analysis from the game).
+    const candidates = await analyzePlayerMoves({
+      pgnMoves: g.history(),
+      myColor,
+      depth: ANALYSIS_DEPTH,
+      cached: (f) => analysesRef.current.get(f),
+      analyze: analyzeForReview,
+      onProgress: (done, total) => id === gameIdRef.current && setReview({ kind: 'analyzing', done, total }),
+      bestLineLength: BEST_LINE_LENGTH,
+    });
+    if (id !== gameIdRef.current) return;
+    if (!candidates) {
+      setReview({ kind: 'error', message: 'The Stockfish pass was interrupted. Press Review again.' });
+      return;
+    }
+    // 2. The 3-5 biggest swings go to Sonnet with the game and your mistake history.
+    setReview({ kind: 'asking' });
+    try {
+      const result = await requestReview({
+        gameId: savedGameId,
+        pgn: gameRecord(resultCode(g, resignedBy)).pgn,
+        myColor,
+        result: resultCode(g, resignedBy),
+        engineStrength: STRENGTH_PRESETS[presetIndex].label,
+        playerLevel: COACH.playerLevel,
+        moments: pickCriticalMoments(candidates),
+      });
+      if (id !== gameIdRef.current) return;
+      gameCostRef.current += result.costUsd;
+      setGameCost(gameCostRef.current);
+      setReview({ kind: 'done', review: result });
+      setHistoryKey((k) => k + 1); // review tags update the mistake summary and spend
+    } catch (err) {
+      if (id === gameIdRef.current) {
+        setReview({ kind: 'error', message: err instanceof Error ? err.message : 'The review failed.' });
+      }
+    }
+  }
 
   function onPieceDrop({ sourceSquare, targetSquare }: PieceDropHandlerArgs): boolean {
     if (!targetSquare || isOver || !myTurn || thinking) return false;
@@ -407,6 +471,8 @@ export default function App() {
     setQueuedQuestion(null);
     setHints({ fen: '', texts: [] });
     mistakesRef.current = new Map();
+    setSavedGameId(null);
+    setReview({ kind: 'idle' });
     gameCostRef.current = 0;
     setGameCost(0);
     // Queue the engine reset first (it runs before any later search), then show the new
@@ -468,6 +534,21 @@ export default function App() {
         </div>
         <aside className="controls">
           <p className={`status${isOver ? ' over' : ''}`}>{turnText}</p>
+          {isOver && (
+            <div className="review-cta">
+              <button
+                id="review-button"
+                className="primary"
+                onClick={() => void startReview()}
+                disabled={savedGameId === null || review.kind === 'analyzing' || review.kind === 'asking'}
+              >
+                {review.kind === 'done' ? 'Show review again' : 'Review this game'}
+              </button>
+              <span className="review-hint">
+                {savedGameId === null ? 'Saving the game…' : 'Stockfish finds your biggest mistakes; Sonnet explains them (a few cents).'}
+              </span>
+            </div>
+          )}
 
           <CoachPanel
             notes={notes}
@@ -532,6 +613,7 @@ export default function App() {
           <HistoryPanel lastN={HISTORY_LAST_N} refreshKey={historyKey} saveNote={saveNote} />
         </aside>
       </main>
+      <ReviewPanel state={review} orientation={myColor} />
     </div>
   );
 }
