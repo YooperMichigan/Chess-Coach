@@ -70,6 +70,7 @@ const ctx: RequestContext = {
   playerLevel: 'not specified',
   recentPlies: 10,
   bestLineLength: 5,
+  opening: null,
 };
 const port = process.env.PORT ?? '3001';
 

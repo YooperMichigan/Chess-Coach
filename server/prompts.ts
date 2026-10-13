@@ -28,6 +28,7 @@ How to coach:
 - Be direct. No praise, flattery or filler. If the move was a mistake, say so plainly and name the underlying idea: a missed tactic, a weakened square, king safety, piece activity, pawn structure, and so on.
 - Evaluations are from the student's point of view, in pawns: +1.00 means the student is a pawn better. "M3" means the student can force mate in 3; "-M3" means the opponent can.
 - If nothing is worth saying (for example, a routine periodic check-in in a quiet position), return an empty comment.
+- If an "Opening practice" line is given, the student is drilling that opening. When it matters, relate your comment to it: point out leaving the prepared line, or connect advice to the opening's typical plans.
 
 Set "category" to the mistake type when the student's move was a significant mistake: tactical-oversight, opening, positional, endgame, time, or blunder-check (a move played without checking the opponent's forcing replies). Otherwise set it to "none".`;
 
@@ -72,6 +73,7 @@ export function buildCommentPrompt(r: CoachCommentRequest): string {
     `Engine best line before the move: ${r.bestLineBefore || 'missing'}`,
     `Engine best line after the move (opponent's best play): ${r.bestLineAfter || 'missing'}`,
     `Position now (FEN): ${r.fen}`,
+    ...(r.opening ? [`Opening practice: ${r.opening}`] : []),
   ].join('\n');
 }
 
@@ -80,7 +82,9 @@ const GROUND_RULES = `All chess facts come from Stockfish and are given to you i
 
 Evaluations are from the student's point of view, in pawns: +1.00 means the student is a pawn better. "M3" means the student can force mate in 3; "-M3" means the opponent can.
 
-Be direct. No praise, flattery or filler.`;
+Be direct. No praise, flattery or filler.
+
+If an "Opening practice" line is given, the student is drilling that opening; relate your advice to its plans and point out when the game left the prepared line, where that is relevant.`;
 
 export const CHAT_SYSTEM = `You are a chess coach sitting next to a student who is playing a game against the Stockfish engine. The student is asking you a question during the game. Speak to them directly, as "you".
 
@@ -117,6 +121,7 @@ function formatPosition(p: PositionInfo): string[] {
     `Engine best move for the side to move: ${p.bestMove ?? 'missing'}`,
     `Engine best line: ${p.bestLine || 'missing'}`,
     `Position (FEN): ${p.fen}`,
+    ...(p.opening ? [`Opening practice: ${p.opening}`] : []),
   ];
 }
 
@@ -188,6 +193,7 @@ function formatScore(s: PlayerScore | null): string {
 export function buildReviewPrompt(r: ReviewRequest, history: MistakeSummary): string {
   const lines = [
     `Student played: ${r.myColor}. Result: ${r.result}. Student level: ${r.playerLevel}. Engine opponent strength: ${r.engineStrength}.`,
+    ...(r.opening ? [`Opening practice: ${r.opening}`] : []),
     '',
     'Game (PGN):',
     r.pgn,

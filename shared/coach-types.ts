@@ -33,6 +33,7 @@ export interface CoachCommentRequest {
   bestLineAfter: string; // opponent's best continuation after the player's move
   engineStrength: string;
   playerLevel: string;
+  opening: string | null; // opening the player is practising and where the game stands against the book
 }
 
 export interface CoachCommentResponse {
@@ -53,6 +54,7 @@ export interface PositionInfo {
   bestLine: string; // numbered SAN
   engineStrength: string;
   playerLevel: string;
+  opening: string | null;
 }
 
 /** Stockfish data about the player's most recent move. */
@@ -162,6 +164,7 @@ export interface ReviewRequest {
   result: GameResult;
   engineStrength: string;
   playerLevel: string;
+  opening: string | null;
   moments: CriticalMoment[]; // 0-5, largest swings first
 }
 

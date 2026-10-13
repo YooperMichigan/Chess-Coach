@@ -52,6 +52,7 @@ export function parseCommentRequest(body: unknown): CoachCommentRequest {
     bestLineAfter: str(b.bestLineAfter, 200, 'bestLineAfter'),
     engineStrength: str(b.engineStrength, 40, 'engineStrength'),
     playerLevel: str(b.playerLevel, 60, 'playerLevel'),
+    opening: b.opening === undefined ? null : nullableStr(b.opening, 1000, 'opening'),
   };
 }
 
@@ -78,6 +79,7 @@ function parsePosition(v: unknown): PositionInfo {
     bestLine: str(p.bestLine, 200, 'bestLine'),
     engineStrength: str(p.engineStrength, 40, 'engineStrength'),
     playerLevel: str(p.playerLevel, 60, 'playerLevel'),
+    opening: p.opening === undefined ? null : nullableStr(p.opening, 1000, 'opening'),
   };
 }
 
@@ -193,6 +195,7 @@ export function parseReviewRequest(body: unknown): ReviewRequest {
     result: b.result as ReviewRequest['result'],
     engineStrength: str(b.engineStrength, 40, 'engineStrength'),
     playerLevel: str(b.playerLevel, 60, 'playerLevel'),
+    opening: b.opening === undefined ? null : nullableStr(b.opening, 1000, 'opening'),
     moments: b.moments.map(parseMoment),
   };
 }

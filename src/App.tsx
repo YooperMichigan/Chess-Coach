@@ -9,6 +9,8 @@ import { MoveList } from './components/MoveList';
 import { CoachPanel, type CoachNote } from './components/CoachPanel';
 import { requestChat, requestComment, requestHint, requestReview, saveGame } from './coach/api';
 import { ReviewPanel, type ReviewState } from './components/ReviewPanel';
+import { OpeningPanel } from './components/OpeningPanel';
+import { bookFor, openingById, openingContext, pickBookReply, positionKey } from './openings/book';
 import { analyzePlayerMoves, pickCriticalMoments } from './review/criticalMoments';
 import { HistoryPanel } from './components/HistoryPanel';
 import { detectTrigger, numberMoves, toPlayerScore } from './coach/triggers';
@@ -38,6 +40,28 @@ import {
 } from './config';
 
 type Color = 'white' | 'black';
+type OpeningChoice = Record<Color, string | null>;
+
+// Stockfish's book replies come after a short pause so they don't feel instant.
+const BOOK_REPLY_DELAY_MS = 500;
+const DEFAULT_OPENINGS: OpeningChoice = { white: 'london', black: 'dragon' };
+
+/** Per-browser preferences; storage may be unavailable (private mode), so never rely on it. */
+function loadPref<T>(key: string, fallback: T): T {
+  try {
+    const raw = localStorage.getItem(key);
+    return raw === null ? fallback : (JSON.parse(raw) as T);
+  } catch {
+    return fallback;
+  }
+}
+function savePref(key: string, value: unknown) {
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+  } catch {
+    // ignore: preferences just won't persist
+  }
+}
 type PromotionPiece = 'q' | 'r' | 'b' | 'n';
 
 const TRIGGER_LABEL: Record<CoachTrigger, string> = {
@@ -117,6 +141,13 @@ export default function App() {
   const [savedGameId, setSavedGameId] = useState<number | null>(null);
   const [review, setReview] = useState<ReviewState>({ kind: 'idle' });
 
+  // Opening trainer: one chosen opening per colour, and whether Stockfish plays book replies.
+  const [openingChoice, setOpeningChoice] = useState<OpeningChoice>(() => loadPref('openingChoice', DEFAULT_OPENINGS));
+  const [followBook, setFollowBook] = useState<boolean>(() => loadPref('followBook', true));
+  // engineMove is created once, so it reads these through refs.
+  const bookRef = useRef({ openingId: openingChoice[myColor], followBook, myColor });
+  bookRef.current = { openingId: openingChoice[myColor], followBook, myColor };
+
   useEffect(() => {
     const engine = new StockfishEngine();
     engineRef.current = engine;
@@ -160,6 +191,20 @@ export default function App() {
     const id = gameIdRef.current;
     setThinking(true);
     try {
+      // While the game is in the opening book you are practising, Stockfish can play a book
+      // reply (weighted toward the main line) instead of searching.
+      const { openingId, followBook: follow, myColor: playerColor } = bookRef.current;
+      const opening = openingById(openingId);
+      if (follow && opening && opening.side === playerColor) {
+        const reply = pickBookReply(bookFor(opening.id).get(positionKey(g.fen())) ?? []);
+        if (reply) {
+          await new Promise((r) => setTimeout(r, BOOK_REPLY_DELAY_MS));
+          if (id !== gameIdRef.current) return;
+          g.move(reply.san);
+          setFen(g.fen());
+          return;
+        }
+      }
       const uci = await engine.getMove(g.fen(), ENGINE_MOVE_TIME_MS);
       if (id !== gameIdRef.current || !uci) return; // game was reset meanwhile
       g.move({ from: uci.slice(0, 2), to: uci.slice(2, 4), promotion: uci[4] });
@@ -189,6 +234,7 @@ export default function App() {
     playerLevel: COACH.playerLevel,
     recentPlies: COACH.recentPlies,
     bestLineLength: BEST_LINE_LENGTH,
+    opening: openingContext(openingById(openingChoice[myColor]), gameRef.current.history(), myColor),
   });
 
   const addNote = (note: Omit<CoachNote, 'id'>) => setNotes((n) => [...n, { ...note, id: ++noteIdRef.current }]);
@@ -406,6 +452,7 @@ export default function App() {
         result: resultCode(g, resignedBy),
         engineStrength: STRENGTH_PRESETS[presetIndex].label,
         playerLevel: COACH.playerLevel,
+        opening: openingContext(openingById(openingChoice[myColor]), g.history(), myColor),
         moments: pickCriticalMoments(candidates),
       });
       if (id !== gameIdRef.current) return;
@@ -517,6 +564,7 @@ export default function App() {
         <h1>Chess Coach</h1>
       </header>
       <main>
+        <div className="left-col">
         <div className="board-wrap">
           <EvalBar score={barScore} resultLabel={resultLabel} orientation={myColor} />
           <div className="board">
@@ -531,6 +579,23 @@ export default function App() {
             }}
           />
           </div>
+        </div>
+        <OpeningPanel
+          openingId={openingChoice[myColor]}
+          onChange={(id) => {
+            const next = { ...openingChoice, [myColor]: id };
+            setOpeningChoice(next);
+            savePref('openingChoice', next);
+          }}
+          myColor={myColor}
+          history={game.history()}
+          fen={fen}
+          followBook={followBook}
+          onToggleFollow={(on) => {
+            setFollowBook(on);
+            savePref('followBook', on);
+          }}
+        />
         </div>
         <aside className="controls">
           <p className={`status${isOver ? ' over' : ''}`}>{turnText}</p>

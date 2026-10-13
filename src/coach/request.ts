@@ -27,6 +27,7 @@ export interface RequestContext {
   playerLevel: string;
   recentPlies: number;
   bestLineLength: number;
+  opening: string | null; // what the player is practising and where the game stands against the book
 }
 
 /** Engine move in SAN, or null if missing or not legal in `fen`. */
@@ -68,6 +69,7 @@ export function buildCoachRequest(m: PlayerMove, trigger: CoachTrigger, ctx: Req
     bestLineAfter: after ? pvToSan(m.fenAfter, after.pv, ctx.bestLineLength) : '',
     engineStrength: ctx.engineStrength,
     playerLevel: ctx.playerLevel,
+    opening: ctx.opening,
   };
 }
 
@@ -102,5 +104,6 @@ export function buildPositionInfo(
     bestLine: a ? pvToSan(fen, a.pv, ctx.bestLineLength) : '',
     engineStrength: ctx.engineStrength,
     playerLevel: ctx.playerLevel,
+    opening: ctx.opening,
   };
 }

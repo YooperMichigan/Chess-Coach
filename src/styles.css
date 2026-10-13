@@ -46,7 +46,8 @@ button:disabled { opacity: 0.5; cursor: default; }
 button.danger { color: var(--danger); }
 
 /* Board + eval bar */
-.board-wrap { display: flex; gap: 8px; flex: 3 1 480px; max-width: 682px; min-width: 0; }
+.left-col { display: flex; flex-direction: column; gap: 16px; flex: 3 1 480px; max-width: 682px; min-width: 0; }
+.board-wrap { display: flex; gap: 8px; width: 100%; }
 .board-wrap .board { flex: 1; min-width: 0; }
 .eval-bar {
   position: relative;
@@ -174,3 +175,36 @@ button.primary:hover:not(:disabled) { filter: brightness(1.08); }
 .swatch.best { background: rgba(46, 139, 87, 0.85); }
 .review-wrap { border-top: 1px solid var(--border); padding-top: 12px; display: flex; flex-direction: column; gap: 6px; max-width: 70ch; }
 .review-cost { font-size: 0.8rem; color: var(--muted); font-variant-numeric: tabular-nums; }
+
+/* Opening trainer (under the board) */
+.opening {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.opening-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+.opening-head h2 { margin: 0; font-size: 1rem; margin-right: auto; }
+.opening-follow { font-size: 0.85rem; }
+.opening .muted, .opening-summary { margin: 0; color: var(--muted); font-size: 0.9rem; line-height: 1.45; }
+.opening-moves { list-style: none; margin: 0; padding: 0; max-height: 220px; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; }
+.opening-moves li { display: grid; grid-template-columns: 5.5em 1fr; gap: 8px; font-size: 0.88rem; line-height: 1.4; }
+.opening-moves li.theirs { color: var(--muted); }
+.opening-moves li.off-book .opening-why { font-style: italic; }
+.opening-move { font-weight: 700; font-variant-numeric: tabular-nums; color: var(--text); }
+.opening-moves li.theirs .opening-move { font-weight: 500; color: var(--muted); }
+.opening-next { border-top: 1px solid var(--border); padding-top: 8px; }
+.opening-next h3, .opening-plans h3 { margin: 0 0 4px; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); }
+.opening-next ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; font-size: 0.9rem; line-height: 1.4; }
+.opening-next strong { font-variant-numeric: tabular-nums; margin-right: 4px; }
+.opening-next .tag { font-size: 0.72rem; border: 1px solid var(--border); border-radius: 999px; padding: 0 6px; margin-right: 4px; color: var(--muted); }
+.opening-alert { margin: 0; font-size: 0.9rem; padding: 6px 10px; border-left: 3px solid var(--accent); background: color-mix(in srgb, var(--accent) 8%, transparent); }
+.opening-plans { display: flex; flex-direction: column; gap: 6px; font-size: 0.9rem; line-height: 1.45; }
+.opening-plans p { margin: 0; }
+.checklist { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 2px 12px; }
+.checklist li { color: var(--muted); }
+.checklist li.done { color: var(--text); }
+.checklist li.done span { color: var(--accent); font-weight: 700; }
