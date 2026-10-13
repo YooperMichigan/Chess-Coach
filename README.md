@@ -2,6 +2,9 @@
 
 Personal, local-only app: play Stockfish in the browser with Claude as a coach. See `CLAUDE.md` for the full spec and build order.
 
+## Starting the app
+Double-click **Start Chess Coach** in the project folder. It updates the app, starts it, and opens it in your browser. Leave the Terminal window it opens running while you play; close it to stop the app. Drag it to the right-hand side of the Dock for one-click access.
+
 ## Setup
 ```bash
 npm install
