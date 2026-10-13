@@ -59,8 +59,20 @@ export class CoachError extends Error {
 let sessionCostUsd = 0;
 
 /** Logs a call's tokens and estimated cost to the terminal and the database. Returns the cost. */
-function logUsage(route: string, model: string, usage: Anthropic.Usage): number {
-  const price = PRICING[model];
+/**
+ * Price for the model that answered. The API may report a longer, versioned name than the ID
+ * we sent, so match by prefix and fall back to the requested model rather than pricing at $0.
+ */
+function priceFor(answeredModel: string, requestedModel: string) {
+  const byPrefix = (m: string) =>
+    PRICING[m] ?? Object.entries(PRICING).find(([id]) => m.startsWith(id))?.[1];
+  const price = byPrefix(answeredModel) ?? byPrefix(requestedModel);
+  if (!price) console.warn(`[coach] no price configured for ${answeredModel}; cost shown as $0. Add it to PRICING in server/config.ts.`);
+  return price;
+}
+
+function logUsage(route: string, model: string, usage: Anthropic.Usage, requestedModel = model): number {
+  const price = priceFor(model, requestedModel);
   const cost = price ? (usage.input_tokens * price.input + usage.output_tokens * price.output) / 1_000_000 : 0;
   sessionCostUsd += cost;
   console.log(
@@ -84,9 +96,9 @@ interface ClaudeReply {
 }
 
 /** Logs usage, checks the stop reason, and returns the response text and its cost. */
-function finish(route: string, message: ClaudeReply): { text: string; costUsd: number } {
+function finish(route: string, message: ClaudeReply, requestedModel: string): { text: string; costUsd: number } {
   // Priced by the model that actually answered (a refusal fallback may have served it).
-  const costUsd = logUsage(route, message.model, message.usage as Anthropic.Usage);
+  const costUsd = logUsage(route, message.model, message.usage as Anthropic.Usage, requestedModel);
   if (message.stop_reason === 'refusal') throw new CoachError(502, 'The coach declined to answer this one.');
   if (message.stop_reason === 'max_tokens') throw new CoachError(502, 'The coach ran out of room to answer. Try again.');
   // Thinking blocks may come first; read only the text blocks.
@@ -105,7 +117,7 @@ async function callClaude(
   params: Omit<Anthropic.MessageCreateParamsNonStreaming, 'model'> & { model: string },
 ): Promise<{ text: string; costUsd: number }> {
   try {
-    return finish(route, await getClient().messages.create(params));
+    return finish(route, await getClient().messages.create(params), params.model);
   } catch (err) {
     throw toCoachError(err);
   }
@@ -190,7 +202,7 @@ export async function coachReview(req: ReviewRequest): Promise<GameReview> {
         output_config: { effort: REVIEW_EFFORT, format: { type: 'json_schema', schema: REVIEW_SCHEMA } },
         messages: [{ role: 'user', content: prompt }],
       });
-      result = finish('review', message);
+      result = finish('review', message, MODELS.review);
     } catch (err) {
       throw toCoachError(err);
     }
