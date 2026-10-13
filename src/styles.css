@@ -47,6 +47,11 @@ button.danger { color: var(--danger); }
 
 /* Board + eval bar */
 .left-col { display: flex; flex-direction: column; gap: 16px; flex: 3 1 480px; max-width: 682px; min-width: 0; }
+/* On wide screens the board also respects the window height, leaving at least ~220px below it
+   for the opening trainer (header ~92px + gap 16px + panel; the eval bar adds 42px of width). */
+@media (min-width: 900px) {
+  .left-col { max-width: max(360px, min(682px, calc(100vh - 286px))); }
+}
 .board-wrap { display: flex; gap: 8px; width: 100%; }
 .board-wrap .board { flex: 1; min-width: 0; }
 .eval-bar {
@@ -190,7 +195,10 @@ button.primary:hover:not(:disabled) { filter: brightness(1.08); }
 .opening-head h2 { margin: 0; font-size: 1rem; margin-right: auto; }
 .opening-follow { font-size: 0.85rem; }
 .opening .muted, .opening-summary { margin: 0; color: var(--muted); font-size: 0.9rem; line-height: 1.45; }
-.opening-moves { list-style: none; margin: 0; padding: 0; max-height: 220px; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; }
+.opening { min-height: 0; overflow: hidden; }
+/* Everything below the title row scrolls inside the box (positioned so offsetTop is measured from here). */
+.opening-body { position: relative; flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; padding-right: 4px; }
+.opening-moves { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
 .opening-moves li { display: grid; grid-template-columns: 5.5em 1fr; gap: 8px; font-size: 0.88rem; line-height: 1.4; }
 .opening-moves li.theirs { color: var(--muted); }
 .opening-moves li.off-book .opening-why { font-style: italic; }
