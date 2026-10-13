@@ -258,3 +258,18 @@ button.primary:hover:not(:disabled) { filter: brightness(1.08); }
 .rating-change.up { color: var(--accent); }
 .rating-change.down { color: var(--danger); }
 .rating-sub { grid-column: 1 / -1; font-size: 0.75rem; color: var(--muted); }
+
+/* Right-hand column: fits the window (see useFitToWindow) and scrolls inside, with the
+   game status pinned to the top so it is always visible. */
+.controls { overflow-y: auto; }
+.controls .status {
+  position: sticky;
+  top: -16px; /* cancels the column's top padding so the status sits flush */
+  z-index: 1;
+  margin: -16px -16px 0;
+  padding: 16px 16px 8px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
+}
+/* With a capped height, flexbox would otherwise squash these instead of scrolling. */
+.controls > *, .opening-body > * { flex-shrink: 0; }

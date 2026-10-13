@@ -1,4 +1,5 @@
-import { useEffect, useLayoutEffect, useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
+import { useFitToWindow } from './useFitToWindow';
 import { Chess } from 'chess.js';
 import { OPENINGS, bookStatus, openingById } from '../openings/book';
 
@@ -25,34 +26,8 @@ export function OpeningPanel({ openingId, onChange, myColor, history, fen, follo
   const bodyRef = useRef<HTMLDivElement>(null);
   const listRef = useRef<HTMLOListElement>(null);
 
-  // On wide screens, size the box to the space left below the board so it never makes the
-  // page scroll; its content scrolls inside instead. Narrow (stacked) layouts scroll normally.
-  useLayoutEffect(() => {
-    const section = sectionRef.current;
-    if (!section) return;
-    const wide = window.matchMedia('(min-width: 900px)');
-    const fit = () => {
-      if (!wide.matches) {
-        section.style.maxHeight = '';
-        return;
-      }
-      const top = section.getBoundingClientRect().top + window.scrollY;
-      section.style.maxHeight = `${Math.max(180, window.innerHeight - top - 16)}px`;
-    };
-    fit();
-    // Re-fit when anything above the box changes size: the board, or the header (rating badge).
-    const observer = new ResizeObserver(fit);
-    if (section.previousElementSibling) observer.observe(section.previousElementSibling); // the board
-    const header = document.querySelector('.app-header');
-    if (header) observer.observe(header);
-    window.addEventListener('resize', fit);
-    wide.addEventListener('change', fit);
-    return () => {
-      observer.disconnect();
-      window.removeEventListener('resize', fit);
-      wide.removeEventListener('change', fit);
-    };
-  }, []);
+  // On wide screens the box fills the space left below the board and scrolls inside.
+  useFitToWindow(sectionRef, ['.board-wrap', '.app-header']);
 
   // Keep the latest move in view: scroll the box (never the page) so it sits near the top.
   useEffect(() => {

@@ -12,6 +12,7 @@ import { RatingBadge } from './components/RatingBadge';
 import type { RatingSummary } from '../shared/rating';
 import { ReviewPanel, type ReviewState } from './components/ReviewPanel';
 import { OpeningPanel } from './components/OpeningPanel';
+import { useFitToWindow } from './components/useFitToWindow';
 import { bookFor, openingById, openingContext, pickBookReply, positionKey } from './openings/book';
 import { analyzePlayerMoves, pickCriticalMoments } from './review/criticalMoments';
 import { HistoryPanel } from './components/HistoryPanel';
@@ -142,6 +143,10 @@ export default function App() {
   // Post-game review: available once the finished game is saved (it needs the game's id).
   const [savedGameId, setSavedGameId] = useState<number | null>(null);
   const [review, setReview] = useState<ReviewState>({ kind: 'idle' });
+
+  // The right-hand column fits the window on wide screens and scrolls inside.
+  const controlsRef = useRef<HTMLElement>(null);
+  useFitToWindow(controlsRef, ['.app-header']);
 
   // In-app rating, refreshed whenever a game is saved (historyKey changes).
   const [rating, setRating] = useState<RatingSummary | null>(null);
@@ -615,7 +620,7 @@ export default function App() {
           }}
         />
         </div>
-        <aside className="controls">
+        <aside className="controls" ref={controlsRef}>
           <p className={`status${isOver ? ' over' : ''}`}>{turnText}</p>
           {isOver && (
             <div className="review-cta">
