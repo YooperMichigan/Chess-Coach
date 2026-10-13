@@ -9,7 +9,19 @@ import {
   parseReviewRequest,
   parseSaveGameRequest,
 } from './validate.ts';
-import { dbPath, gameExists, gameMistakes, mistakeSummary, recentGames, saveGame, usageSummary } from './db.ts';
+import {
+  dbPath,
+  gameExists,
+  gameMistakes,
+  getSetting,
+  mistakeSummary,
+  playerRating,
+  recentGames,
+  saveGame,
+  setSetting,
+  usageSummary,
+} from './db.ts';
+import { COACHING_BRIEF_MAX } from './prompts.ts';
 
 const app = express();
 app.use(express.json({ limit: '16kb' }));
@@ -86,6 +98,25 @@ app.get('/api/games/:id/mistakes', (req, res) => {
 // Top recurring mistake categories over the last N games.
 app.get('/api/mistakes/summary', (req, res) => {
   res.json(mistakeSummary(intParam(req.query.lastN, 10, 1, 500)));
+});
+
+// The player's in-app rating, estimated from finished games against Stockfish.
+app.get('/api/rating', (_req, res) => {
+  res.json(playerRating());
+});
+
+// The coaching brief: the student's goals and preferred coaching style, added to every coach prompt.
+app.get('/api/settings', (_req, res) => {
+  res.json({ coachingBrief: getSetting('coachingBrief') ?? '' });
+});
+app.put('/api/settings', (req, res) => {
+  const brief = (req.body ?? {}).coachingBrief;
+  if (typeof brief !== 'string' || brief.length > COACHING_BRIEF_MAX) {
+    res.status(400).json({ error: `The coaching brief must be text of at most ${COACHING_BRIEF_MAX} characters.` });
+    return;
+  }
+  setSetting('coachingBrief', brief.trim());
+  res.json({ coachingBrief: brief.trim() });
 });
 
 // Estimated Claude API spend recorded by this app (all time and this month).

@@ -119,6 +119,11 @@ Each press escalates one level for the current position. Reset on the next move.
 - Typecheck: `npm run typecheck`
 - Env: copy `.env.example` to `.env` and add `ANTHROPIC_API_KEY`
 
+## Added after Stage 6
+- **Opening trainer:** hand-written repertoire in `src/openings/book.ts` (London as White, Dragon as Black), keyed by position so transpositions match. Every line must stay legal (chess.js) and each book move should be checked with Stockfish. Stockfish may play book replies while in book (a deterministic choice from the book, never from Claude). The opening and book status are passed to the coach as context.
+- **Coaching brief:** the player's goals and preferred style, stored in the `settings` table and appended to every coach system prompt inside `<student_brief>`; the coach's rules take priority over it.
+- **Rating:** Elo-style rating replayed from finished games (`shared/rating.ts`), shown in the header and passed to the coach as the player's level.
+
 ## Things to flag to me, not decide silently
 - Any place where Claude's output could affect game state (it shouldn't)
 - Stockfish WASM performance issues in the browser

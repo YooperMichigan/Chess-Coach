@@ -10,6 +10,7 @@ import type {
   SaveGameRequest,
   UsageSummary,
 } from '../shared/coach-types.ts';
+import { ENGINE_RATINGS, computeRating, type RatedGame, type RatingSummary } from '../shared/rating.ts';
 
 // The database lives next to the project in data/ (gitignored). Override with CHESS_DB_PATH.
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -45,6 +46,11 @@ db.exec(`
     coach_note  TEXT
   );
   CREATE INDEX IF NOT EXISTS mistakes_game ON mistakes(game_id);
+  -- Small key/value store for app settings such as the coaching brief.
+  CREATE TABLE IF NOT EXISTS settings (
+    key   TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+  );
   -- One row per Claude API call, for the in-app cost display.
   CREATE TABLE IF NOT EXISTS api_usage (
     id            INTEGER PRIMARY KEY,
@@ -208,5 +214,30 @@ export const saveReview = db.transaction((review: GameReview) => {
     review.gameId,
   );
 });
+
+export function getSetting(key: string): string | null {
+  const row = db.prepare(`SELECT value FROM settings WHERE key = ?`).get(key) as { value: string } | undefined;
+  return row?.value ?? null;
+}
+
+export function setSetting(key: string, value: string) {
+  db.prepare(`INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value`).run(key, value);
+}
+
+const finishedGames = db.prepare(
+  `SELECT result, my_color AS myColor, engine_elo AS engineElo, engine_label AS engineLabel
+   FROM games WHERE result != '*' ORDER BY played_at, id`,
+);
+
+/** The player's rating, replayed from every finished game (games at unknown strengths are skipped). */
+export function playerRating(): RatingSummary {
+  const rows = finishedGames.all() as { result: RatedGame['result']; myColor: 'white' | 'black'; engineElo: number | null; engineLabel: string }[];
+  const rated: RatedGame[] = [];
+  for (const r of rows) {
+    const engineRating = r.engineElo ?? ENGINE_RATINGS[r.engineLabel];
+    if (engineRating) rated.push({ result: r.result, myColor: r.myColor, engineRating });
+  }
+  return computeRating(rated);
+}
 
 export const dbPath = DB_PATH;

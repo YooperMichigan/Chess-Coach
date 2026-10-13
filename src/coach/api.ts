@@ -12,6 +12,7 @@ import type {
   SaveGameResponse,
   UsageSummary,
 } from '../../shared/coach-types';
+import type { RatingSummary } from '../../shared/rating';
 
 async function post<Res>(path: string, body: unknown): Promise<Res> {
   let res: Response;
@@ -59,4 +60,27 @@ export function formatUsd(usd: number): string {
   if (usd >= 1) return `$${usd.toFixed(2)}`;
   if (usd >= 0.01) return `$${usd.toFixed(3)}`;
   return `$${usd.toPrecision(2).replace(/0+$/, '')}`;
+}
+
+export async function fetchCoachingBrief(): Promise<string> {
+  const res = await fetch('/api/settings');
+  if (!res.ok) throw new Error(`Could not load the coaching brief (server error ${res.status}).`);
+  return ((await res.json()) as { coachingBrief: string }).coachingBrief;
+}
+
+export async function saveCoachingBrief(coachingBrief: string): Promise<string> {
+  const res = await fetch('/api/settings', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ coachingBrief }),
+  });
+  const data = await res.json().catch(() => null);
+  if (!res.ok) throw new Error(data?.error ?? `Could not save (server error ${res.status}).`);
+  return data.coachingBrief;
+}
+
+export async function fetchRating(): Promise<RatingSummary> {
+  const res = await fetch('/api/rating');
+  if (!res.ok) throw new Error(`Could not load your rating (server error ${res.status}).`);
+  return res.json();
 }

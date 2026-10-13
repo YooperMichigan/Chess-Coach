@@ -21,7 +21,7 @@
 * { box-sizing: border-box; }
 body { margin: 0; background: var(--bg); }
 .app { max-width: 1100px; margin: 0 auto; padding: 16px; }
-header h1 { margin: 0 0 16px; font-size: 1.4rem; }
+header h1 { margin: 0; font-size: 1.4rem; }
 main { display: flex; gap: 24px; align-items: flex-start; flex-wrap: wrap; }
 .board { width: min(640px, 100%); }
 .controls {
@@ -208,3 +208,45 @@ button.primary:hover:not(:disabled) { filter: brightness(1.08); }
 .checklist li { color: var(--muted); }
 .checklist li.done { color: var(--text); }
 .checklist li.done span { color: var(--accent); font-weight: 700; }
+
+/* Coaching brief */
+.brief { border-top: 1px solid var(--border); padding-top: 8px; }
+.brief summary { cursor: pointer; font-weight: 600; font-size: 0.9rem; }
+.brief-state { font-weight: 400; font-size: 0.78rem; color: var(--muted); margin-left: 6px; }
+.brief-help { margin: 6px 0; font-size: 0.82rem; color: var(--muted); line-height: 1.4; }
+.brief textarea {
+  width: 100%;
+  font: inherit;
+  font-size: 0.88rem;
+  padding: 8px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--panel);
+  color: var(--text);
+  resize: vertical;
+}
+.brief-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 6px; font-size: 0.8rem; }
+.brief-count { color: var(--muted); font-variant-numeric: tabular-nums; }
+.brief-ok { color: var(--accent); }
+.brief-error { color: var(--danger); }
+
+/* Rating badge */
+.app-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 16px; }
+.app-header h1 { margin: 0; }
+.rating {
+  display: grid;
+  grid-template-columns: auto auto auto;
+  align-items: baseline;
+  column-gap: 8px;
+  padding: 6px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel);
+  cursor: help;
+}
+.rating-label { font-size: 0.78rem; color: var(--muted); }
+.rating-value { font-size: 1.35rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+.rating-change { font-size: 0.85rem; font-weight: 600; font-variant-numeric: tabular-nums; }
+.rating-change.up { color: var(--accent); }
+.rating-change.down { color: var(--danger); }
+.rating-sub { grid-column: 1 / -1; font-size: 0.75rem; color: var(--muted); }

@@ -37,8 +37,9 @@ import {
   buildCommentPrompt,
   buildHintPrompt,
   buildReviewPrompt,
+  withBrief,
 } from './prompts.ts';
-import { mistakeSummary, recordUsage, saveReview, storedReview } from './db.ts';
+import { getSetting, mistakeSummary, recordUsage, saveReview, storedReview } from './db.ts';
 
 let client: Anthropic | null = null;
 function getClient(): Anthropic {
@@ -149,7 +150,7 @@ export async function coachComment(req: CoachCommentRequest): Promise<CoachComme
   const { text, costUsd } = await callClaude('comment', {
     model: MODELS.live,
     max_tokens: COMMENT_MAX_TOKENS,
-    system: COACH_SYSTEM,
+    system: withBrief(COACH_SYSTEM, getSetting('coachingBrief')),
     output_config: { effort: COMMENT_EFFORT, format: { type: 'json_schema', schema: COMMENT_SCHEMA } },
     messages: [{ role: 'user', content: prompt }],
   });
@@ -177,7 +178,7 @@ export async function coachChat(req: CoachChatRequest): Promise<CoachChatRespons
   const { text: reply, costUsd } = await callClaude('chat', {
     model: MODELS.chat,
     max_tokens: CHAT_MAX_TOKENS,
-    system: CHAT_SYSTEM,
+    system: withBrief(CHAT_SYSTEM, getSetting('coachingBrief')),
     output_config: { effort: CHAT_EFFORT },
     messages: [...history, { role: 'user', content: prompt }],
   });
@@ -202,7 +203,7 @@ export async function coachReview(req: ReviewRequest): Promise<GameReview> {
     const result = await callClaude('review', {
       model: MODELS.review,
       max_tokens: REVIEW_MAX_TOKENS,
-      system: REVIEW_SYSTEM,
+      system: withBrief(REVIEW_SYSTEM, getSetting('coachingBrief')),
       output_config: { effort: REVIEW_EFFORT, format: { type: 'json_schema', schema: REVIEW_SCHEMA } },
       messages: [{ role: 'user', content: prompt }],
     });
@@ -236,7 +237,7 @@ export async function coachHint(req: CoachHintRequest): Promise<CoachHintRespons
   const { text: hint, costUsd } = await callClaude(`hint-${req.level}`, {
     model: MODELS.live,
     max_tokens: HINT_MAX_TOKENS,
-    system: HINT_SYSTEM,
+    system: withBrief(HINT_SYSTEM, getSetting('coachingBrief')),
     output_config: { effort: LIVE_EFFORT },
     messages: [{ role: 'user', content: prompt }],
   });

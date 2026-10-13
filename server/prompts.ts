@@ -221,3 +221,20 @@ export function buildReviewPrompt(r: ReviewRequest, history: MistakeSummary): st
   lines.push('', `Return one entry in "moments" for each critical moment, using its index.`);
   return lines.join('\n');
 }
+
+export const COACHING_BRIEF_MAX = 1500;
+
+/**
+ * Adds the student's own coaching brief to a system prompt. It is the student's statement of
+ * goals and preferred style; the coach's rules above it still take priority.
+ */
+export function withBrief(system: string, brief: string | null): string {
+  const text = brief?.trim();
+  if (!text) return system;
+  return `${system}
+
+The student has written a brief for their coaching: their goals and how they like to be coached. Follow it where it fits the rules above; the rules above always take priority (all chess facts still come only from the engine data provided).
+<student_brief>
+${text.slice(0, COACHING_BRIEF_MAX)}
+</student_brief>`;
+}

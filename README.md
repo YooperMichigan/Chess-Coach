@@ -5,6 +5,11 @@ Personal, local-only app: play Stockfish in the browser with Claude as a coach. 
 ## Starting the app
 Double-click **Start Chess Coach** in the project folder. It updates the app, starts it, and opens it in your browser. Leave the Terminal window it opens running while you play; close it to stop the app. Drag it to the right-hand side of the Dock for one-click access.
 
+## Training features
+- **Opening trainer** (under the board): pick the London System (White) or the Sicilian Dragon (Black). It shows the book line as the game goes, with the idea behind every move, what the book plays next, and where you or Stockfish left the book; out of book it shows the set-up checklist and typical plans. Optionally Stockfish plays book replies so the openings actually arise. The repertoire lives in `src/openings/book.ts`.
+- **Coaching brief** (in the coach panel): tell the coach your goals and how you like to be coached. It's stored in the database and added to every coach prompt; the coach's rules still take priority.
+- **Your rating** (top right): an Elo-style rating from finished games against Stockfish, starting at 1200. Skill Level settings use estimated strengths (`shared/rating.ts`). The coach is told your rating.
+
 ## Setup
 ```bash
 npm install

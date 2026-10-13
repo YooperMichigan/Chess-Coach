@@ -7,7 +7,9 @@ import { EvalBar } from './components/EvalBar';
 import { EngineLine } from './components/EngineLine';
 import { MoveList } from './components/MoveList';
 import { CoachPanel, type CoachNote } from './components/CoachPanel';
-import { requestChat, requestComment, requestHint, requestReview, saveGame } from './coach/api';
+import { fetchRating, requestChat, requestComment, requestHint, requestReview, saveGame } from './coach/api';
+import { RatingBadge } from './components/RatingBadge';
+import type { RatingSummary } from '../shared/rating';
 import { ReviewPanel, type ReviewState } from './components/ReviewPanel';
 import { OpeningPanel } from './components/OpeningPanel';
 import { bookFor, openingById, openingContext, pickBookReply, positionKey } from './openings/book';
@@ -141,6 +143,21 @@ export default function App() {
   const [savedGameId, setSavedGameId] = useState<number | null>(null);
   const [review, setReview] = useState<ReviewState>({ kind: 'idle' });
 
+  // In-app rating, refreshed whenever a game is saved (historyKey changes).
+  const [rating, setRating] = useState<RatingSummary | null>(null);
+  useEffect(() => {
+    fetchRating()
+      .then(setRating)
+      .catch(() => setRating(null));
+  }, [historyKey]);
+  // Tells the coach the player's level: the configured description, else the in-app rating.
+  const playerLevel =
+    COACH.playerLevel !== 'not specified'
+      ? COACH.playerLevel
+      : rating && rating.games > 0
+        ? `app rating about ${rating.rating}${rating.provisional ? ` (provisional, ${rating.games} game${rating.games === 1 ? "" : "s"})` : ''}`
+        : 'not specified';
+
   // Opening trainer: one chosen opening per colour, and whether Stockfish plays book replies.
   const [openingChoice, setOpeningChoice] = useState<OpeningChoice>(() => loadPref('openingChoice', DEFAULT_OPENINGS));
   const [followBook, setFollowBook] = useState<boolean>(() => loadPref('followBook', true));
@@ -231,7 +248,7 @@ export default function App() {
     myColor,
     analysisOf: (f) => analysesRef.current.get(f),
     engineStrength: STRENGTH_PRESETS[presetIndex].label,
-    playerLevel: COACH.playerLevel,
+    playerLevel,
     recentPlies: COACH.recentPlies,
     bestLineLength: BEST_LINE_LENGTH,
     opening: openingContext(openingById(openingChoice[myColor]), gameRef.current.history(), myColor),
@@ -451,7 +468,7 @@ export default function App() {
         myColor,
         result: resultCode(g, resignedBy),
         engineStrength: STRENGTH_PRESETS[presetIndex].label,
-        playerLevel: COACH.playerLevel,
+        playerLevel,
         opening: openingContext(openingById(openingChoice[myColor]), g.history(), myColor),
         moments: pickCriticalMoments(candidates),
       });
@@ -560,8 +577,9 @@ export default function App() {
 
   return (
     <div className="app">
-      <header>
+      <header className="app-header">
         <h1>Chess Coach</h1>
+        <RatingBadge rating={rating} />
       </header>
       <main>
         <div className="left-col">

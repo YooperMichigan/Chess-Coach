@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import type { HintLevel, MistakeCategory } from '../../shared/coach-types';
 import { formatUsd } from '../coach/api';
+import { CoachingBrief } from './CoachingBrief';
 
 export interface CoachNote {
   id: number;
@@ -100,6 +101,7 @@ export function CoachPanel(p: Props) {
         <input id="periodic-toggle" type="checkbox" checked={p.periodicOn} onChange={(e) => p.onTogglePeriodic(e.target.checked)} />
         Strategic note every few moves
       </label>
+      <CoachingBrief />
     </section>
   );
 }
