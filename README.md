@@ -24,7 +24,7 @@ Coach settings (eval-drop threshold, check-in interval, per-game cap, your level
 - [x] Stage 2: eval bar, move list, engine best line (separate full-strength analysis worker, depth 16)
 - [x] Stage 3: coach panel (Express + Haiku): comments on eval drops over 80cp, missed mates, every 5th move (toggle), and Ask coach; 25 calls per game cap
 - [x] Stage 4: chat box and a three-level hint button (nudge, where to look, show move), resetting each move
-- [ ] Stage 5: SQLite games and mistakes
+- [x] Stage 5: games and mistakes saved to SQLite (`data/chess-coach.db`), with a "Your history" panel showing the most common mistake types over the last 10 games
 - [ ] Stage 6: post-game review (Sonnet)
 
 ## License note
