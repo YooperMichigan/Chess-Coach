@@ -25,7 +25,8 @@ header h1 { margin: 0 0 16px; font-size: 1.4rem; }
 main { display: flex; gap: 24px; align-items: flex-start; flex-wrap: wrap; }
 .board { width: min(640px, 100%); }
 .controls {
-  flex: 1 1 260px;
+  flex: 1 1 280px;
+  min-width: 280px; /* explicit, so wide form controls inside cannot force a wrap */
   display: flex;
   flex-direction: column;
   gap: 14px;
@@ -45,7 +46,7 @@ button:disabled { opacity: 0.5; cursor: default; }
 button.danger { color: var(--danger); }
 
 /* Board + eval bar */
-.board-wrap { display: flex; gap: 8px; width: min(682px, 100%); }
+.board-wrap { display: flex; gap: 8px; flex: 3 1 480px; max-width: 682px; min-width: 0; }
 .board-wrap .board { flex: 1; min-width: 0; }
 .eval-bar {
   position: relative;
@@ -101,12 +102,28 @@ button.danger { color: var(--danger); }
 .coach-notes { display: flex; flex-direction: column; gap: 8px; max-height: 260px; overflow-y: auto; }
 .coach-notes .empty { margin: 0; color: var(--muted); font-size: 0.85rem; }
 .coach-note { border-left: 3px solid var(--accent); padding: 4px 0 4px 10px; }
-.coach-note.error { border-left-color: var(--danger); }
 .coach-note header { display: flex; flex-wrap: wrap; gap: 6px; align-items: baseline; font-size: 0.78rem; color: var(--muted); }
-.note-move { font-weight: 700; color: var(--text); font-variant-numeric: tabular-nums; }
 .note-cat { padding: 0 6px; border: 1px solid var(--border); border-radius: 999px; }
 .coach-note p { margin: 2px 0 0; font-size: 0.92rem; line-height: 1.4; }
-.coach-note.error p { color: var(--danger); }
 .coach-busy { margin: 0; font-size: 0.85rem; color: var(--muted); }
 .coach-actions { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
 label.inline { flex-direction: row; align-items: center; gap: 6px; }
+
+/* Stage 4: chat feed, chat box, hint button */
+.coach-note.from-you { border-left-color: var(--border); }
+.coach-note.from-you p { color: var(--muted); }
+.coach-note.from-error { border-left-color: var(--danger); }
+.coach-note.from-error p { color: var(--danger); }
+.note-label { font-weight: 700; color: var(--text); font-variant-numeric: tabular-nums; }
+.coach-chat { display: flex; gap: 6px; }
+.coach-chat input {
+  flex: 1;
+  min-width: 0;
+  font: inherit;
+  padding: 6px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--panel);
+  color: var(--text);
+}
+.coach-chat input:focus-visible, button:focus-visible, select:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }

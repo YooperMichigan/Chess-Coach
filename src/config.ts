@@ -47,6 +47,8 @@ export const COACH = {
   maxCallsPerGame: 25,
   // How many recent half-moves to send (6-10).
   recentPlies: 10,
+  // Earlier chat messages sent with each new question (the server also caps this).
+  chatHistoryTurns: 6,
   // Tells the coach how to pitch its advice. Edit to describe yourself, e.g. "about 1200 online".
   playerLevel: 'not specified',
 };

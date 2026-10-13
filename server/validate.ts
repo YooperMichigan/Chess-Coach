@@ -1,4 +1,12 @@
-import type { CoachCommentRequest, EngineEval } from '../shared/coach-types.ts';
+import type {
+  ChatTurn,
+  CoachChatRequest,
+  CoachCommentRequest,
+  CoachHintRequest,
+  EngineEval,
+  LastMoveInfo,
+  PositionInfo,
+} from '../shared/coach-types.ts';
 
 // The client is local and trusted, but bad input should fail clearly rather than reach the API.
 const TRIGGERS = ['swing', 'missed-mate', 'periodic', 'ask'];
@@ -38,5 +46,68 @@ export function parseCommentRequest(body: unknown): CoachCommentRequest {
     bestLineAfter: str(b.bestLineAfter, 200, 'bestLineAfter'),
     engineStrength: str(b.engineStrength, 40, 'engineStrength'),
     playerLevel: str(b.playerLevel, 60, 'playerLevel'),
+  };
+}
+
+function color(v: unknown): 'white' | 'black' {
+  if (v !== 'white' && v !== 'black') throw new Error('Invalid myColor');
+  return v;
+}
+
+function nullableStr(v: unknown, max: number, name: string): string | null {
+  return v === null ? null : str(v, max, name);
+}
+
+function parsePosition(v: unknown): PositionInfo {
+  const p = (v ?? {}) as Record<string, unknown>;
+  if (p.toMove !== 'player' && p.toMove !== 'engine') throw new Error('Invalid toMove');
+  return {
+    fen: str(p.fen, 100, 'fen'),
+    myColor: color(p.myColor),
+    recentMoves: str(p.recentMoves, 300, 'recentMoves'),
+    toMove: p.toMove,
+    gameResult: nullableStr(p.gameResult, 80, 'gameResult'),
+    eval: evalOrNull(p.eval, 'eval'),
+    bestMove: nullableStr(p.bestMove, 10, 'bestMove'),
+    bestLine: str(p.bestLine, 200, 'bestLine'),
+    engineStrength: str(p.engineStrength, 40, 'engineStrength'),
+    playerLevel: str(p.playerLevel, 60, 'playerLevel'),
+  };
+}
+
+function parseLastMove(v: unknown): LastMoveInfo | null {
+  if (v === null) return null;
+  const m = (v ?? {}) as Record<string, unknown>;
+  return {
+    san: str(m.san, 10, 'lastMove.san'),
+    evalBefore: evalOrNull(m.evalBefore, 'lastMove.evalBefore'),
+    evalAfter: evalOrNull(m.evalAfter, 'lastMove.evalAfter'),
+    engineTopMove: nullableStr(m.engineTopMove, 10, 'lastMove.engineTopMove'),
+    wasTopChoice: Boolean(m.wasTopChoice),
+  };
+}
+
+export function parseChatRequest(body: unknown): CoachChatRequest {
+  const b = (body ?? {}) as Record<string, unknown>;
+  const question = str(b.question, 500, 'question').trim();
+  if (!question) throw new Error('Empty question');
+  if (!Array.isArray(b.history) || b.history.length > 20) throw new Error('Invalid history');
+  const history: ChatTurn[] = b.history.map((t: Record<string, unknown>) => {
+    if (t?.role !== 'user' && t?.role !== 'assistant') throw new Error('Invalid history role');
+    return { role: t.role, text: str(t.text, 1500, 'history text') };
+  });
+  return { question, history, position: parsePosition(b.position), lastMove: parseLastMove(b.lastMove) };
+}
+
+export function parseHintRequest(body: unknown): CoachHintRequest {
+  const b = (body ?? {}) as Record<string, unknown>;
+  if (b.level !== 1 && b.level !== 2 && b.level !== 3) throw new Error('Invalid level');
+  if (!Array.isArray(b.previousHints) || b.previousHints.length > 2) throw new Error('Invalid previousHints');
+  const position = parsePosition(b.position);
+  if (position.toMove !== 'player' || position.gameResult) throw new Error('Hints are only for your own move');
+  return {
+    level: b.level,
+    position,
+    previousHints: b.previousHints.map((h: unknown) => str(h, 600, 'previous hint')),
   };
 }

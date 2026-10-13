@@ -1,7 +1,33 @@
 import Anthropic from '@anthropic-ai/sdk';
-import type { CoachCommentRequest, CoachCommentResponse, MistakeCategory } from '../shared/coach-types.ts';
-import { COMMENT_EFFORT, COMMENT_MAX_TOKENS, MODELS, PRICING } from './config.ts';
-import { COACH_SYSTEM, COMMENT_SCHEMA, MISTAKE_CATEGORIES, buildCommentPrompt } from './prompts.ts';
+import type {
+  CoachChatRequest,
+  CoachChatResponse,
+  CoachCommentRequest,
+  CoachCommentResponse,
+  CoachHintRequest,
+  CoachHintResponse,
+  MistakeCategory,
+} from '../shared/coach-types.ts';
+import {
+  CHAT_HISTORY_TURNS,
+  CHAT_MAX_TOKENS,
+  COMMENT_EFFORT,
+  COMMENT_MAX_TOKENS,
+  HINT_MAX_TOKENS,
+  LIVE_EFFORT,
+  MODELS,
+  PRICING,
+} from './config.ts';
+import {
+  CHAT_SYSTEM,
+  COACH_SYSTEM,
+  COMMENT_SCHEMA,
+  HINT_SYSTEM,
+  MISTAKE_CATEGORIES,
+  buildChatPrompt,
+  buildCommentPrompt,
+  buildHintPrompt,
+} from './prompts.ts';
 
 let client: Anthropic | null = null;
 function getClient(): Anthropic {
@@ -33,31 +59,46 @@ function logUsage(route: string, model: string, usage: Anthropic.Usage) {
   );
 }
 
-export async function coachComment(req: CoachCommentRequest): Promise<CoachCommentResponse> {
-  const prompt = buildCommentPrompt(req);
-  if (process.env.COACH_DRY_RUN) {
-    console.log('[coach] dry run, prompt:\n' + prompt);
-    return { comment: '(dry run: no API call made)', category: null };
-  }
-  const model = MODELS.live;
+/** One Haiku/Sonnet call with shared error handling and usage logging. Returns the text output. */
+async function callClaude(
+  route: string,
+  params: Omit<Anthropic.MessageCreateParamsNonStreaming, 'model'> & { model: string },
+): Promise<string> {
   let message: Anthropic.Message;
   try {
-    message = await getClient().messages.create({
-      model,
-      max_tokens: COMMENT_MAX_TOKENS,
-      system: COACH_SYSTEM,
-      output_config: { effort: COMMENT_EFFORT, format: { type: 'json_schema', schema: COMMENT_SCHEMA } },
-      messages: [{ role: 'user', content: prompt }],
-    });
+    message = await getClient().messages.create(params);
   } catch (err) {
     throw toCoachError(err);
   }
-  logUsage('comment', model, message.usage);
-
+  logUsage(route, params.model, message.usage);
   if (message.stop_reason === 'refusal') throw new CoachError(502, 'The coach declined to answer this one.');
   if (message.stop_reason === 'max_tokens') throw new CoachError(502, 'The coach ran out of room to answer. Try again.');
-  const text = message.content.find((b): b is Anthropic.TextBlock => b.type === 'text')?.text;
+  // Haiku 5.5 may return thinking blocks first; read only the text blocks.
+  const text = message.content
+    .filter((b): b is Anthropic.TextBlock => b.type === 'text')
+    .map((b) => b.text)
+    .join('')
+    .trim();
   if (!text) throw new CoachError(502, 'The coach returned no text.');
+  return text;
+}
+
+function dryRun(route: string, prompt: string): boolean {
+  if (!process.env.COACH_DRY_RUN) return false;
+  console.log(`[coach] dry run (${route}), prompt:\n${prompt}`);
+  return true;
+}
+
+export async function coachComment(req: CoachCommentRequest): Promise<CoachCommentResponse> {
+  const prompt = buildCommentPrompt(req);
+  if (dryRun('comment', prompt)) return { comment: '(dry run: no API call made)', category: null };
+  const text = await callClaude('comment', {
+    model: MODELS.live,
+    max_tokens: COMMENT_MAX_TOKENS,
+    system: COACH_SYSTEM,
+    output_config: { effort: COMMENT_EFFORT, format: { type: 'json_schema', schema: COMMENT_SCHEMA } },
+    messages: [{ role: 'user', content: prompt }],
+  });
   let parsed: { comment: string; category: string };
   try {
     parsed = JSON.parse(text);
@@ -68,6 +109,38 @@ export async function coachComment(req: CoachCommentRequest): Promise<CoachComme
     ? (parsed.category as MistakeCategory)
     : null;
   return { comment: parsed.comment.trim(), category };
+}
+
+export async function coachChat(req: CoachChatRequest): Promise<CoachChatResponse> {
+  const prompt = buildChatPrompt(req);
+  if (dryRun('chat', prompt)) return { reply: '(dry run: no API call made)' };
+  // Earlier turns go in as plain text; only the newest question carries the position data.
+  const history: Anthropic.MessageParam[] = req.history
+    .slice(-CHAT_HISTORY_TURNS)
+    .map((t) => ({ role: t.role, content: t.text }));
+  // The API needs the first message to be from the user.
+  while (history.length && history[0].role !== 'user') history.shift();
+  const reply = await callClaude('chat', {
+    model: MODELS.live,
+    max_tokens: CHAT_MAX_TOKENS,
+    system: CHAT_SYSTEM,
+    output_config: { effort: LIVE_EFFORT },
+    messages: [...history, { role: 'user', content: prompt }],
+  });
+  return { reply };
+}
+
+export async function coachHint(req: CoachHintRequest): Promise<CoachHintResponse> {
+  const prompt = buildHintPrompt(req);
+  if (dryRun('hint', prompt)) return { hint: `(dry run: level ${req.level} hint, no API call made)` };
+  const hint = await callClaude(`hint-${req.level}`, {
+    model: MODELS.live,
+    max_tokens: HINT_MAX_TOKENS,
+    system: HINT_SYSTEM,
+    output_config: { effort: LIVE_EFFORT },
+    messages: [{ role: 'user', content: prompt }],
+  });
+  return { hint };
 }
 
 function toCoachError(err: unknown): CoachError {

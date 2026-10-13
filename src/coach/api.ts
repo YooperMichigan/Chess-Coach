@@ -1,9 +1,16 @@
-import type { CoachCommentRequest, CoachCommentResponse } from '../../shared/coach-types';
+import type {
+  CoachChatRequest,
+  CoachChatResponse,
+  CoachCommentRequest,
+  CoachCommentResponse,
+  CoachHintRequest,
+  CoachHintResponse,
+} from '../../shared/coach-types';
 
-export async function requestComment(body: CoachCommentRequest): Promise<CoachCommentResponse> {
+async function post<Res>(path: string, body: unknown): Promise<Res> {
   let res: Response;
   try {
-    res = await fetch('/api/coach/comment', {
+    res = await fetch(path, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
@@ -15,5 +22,9 @@ export async function requestComment(body: CoachCommentRequest): Promise<CoachCo
   if (!res.ok) {
     throw new Error(data?.error ?? `Coach server error ${res.status}. Is the server running?`);
   }
-  return data as CoachCommentResponse;
+  return data as Res;
 }
+
+export const requestComment = (body: CoachCommentRequest) => post<CoachCommentResponse>('/api/coach/comment', body);
+export const requestChat = (body: CoachChatRequest) => post<CoachChatResponse>('/api/coach/chat', body);
+export const requestHint = (body: CoachHintRequest) => post<CoachHintResponse>('/api/coach/hint', body);

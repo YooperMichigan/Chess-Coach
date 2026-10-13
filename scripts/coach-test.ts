@@ -1,9 +1,10 @@
-// Stage 3 smoke test: sends one hardcoded blunder to the running coach server.
+// Coach smoke test: sends a hardcoded blunder to the running coach server, then asks for all
+// three hint levels in the position before it and one chat question about it.
 // Stockfish (Node build) computes the evals; the request is built with the app's own code.
 // Usage: start the server (`npm run server`), then `npm run coach:test`.
 import { createRequire } from 'node:module';
 import { Chess } from 'chess.js';
-import { buildCoachRequest, type PlayerMove } from '../src/coach/request.ts';
+import { buildCoachRequest, buildLastMoveInfo, buildPositionInfo, type PlayerMove, type RequestContext } from '../src/coach/request.ts';
 import { detectTrigger, toPlayerScore } from '../src/coach/triggers.ts';
 import type { AnalysisInfo } from '../src/engine/stockfish.ts';
 
@@ -61,7 +62,7 @@ const trigger = detectTrigger(before, after, { thresholdCp: 80, periodicDue: fal
 console.log(`Eval before ${JSON.stringify(before)}, after ${JSON.stringify(after)}, trigger: ${trigger}`);
 if (!trigger) throw new Error('Expected the blunder to trigger the coach');
 
-const body = buildCoachRequest(record, trigger, {
+const ctx: RequestContext = {
   history: game.history(),
   myColor: 'white',
   analysisOf: (f) => analyses.get(f),
@@ -69,13 +70,35 @@ const body = buildCoachRequest(record, trigger, {
   playerLevel: 'not specified',
   recentPlies: 10,
   bestLineLength: 5,
-});
-console.log('Request:', JSON.stringify(body, null, 2));
-
+};
 const port = process.env.PORT ?? '3001';
-const res = await httpFetch(`http://127.0.0.1:${port}/api/coach/comment`, {
-  method: 'POST',
-  headers: { 'Content-Type': 'application/json' },
-  body: JSON.stringify(body),
+
+async function post(route: string, body: unknown): Promise<Record<string, unknown>> {
+  const res = await httpFetch(`http://127.0.0.1:${port}/api/coach/${route}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  const data = await res.json();
+  console.log(`\n${route} -> ${res.status}:`, data);
+  return data;
+}
+
+// 1. Live comment on the blunder.
+await post('comment', buildCoachRequest(record, trigger, ctx));
+
+// 2. Hints for the position before the blunder (White to move after 3...Nd4).
+const hintPosition = buildPositionInfo(record.fenBefore, 'player', null, { ...ctx, history: SETUP });
+const previousHints: string[] = [];
+for (const level of [1, 2, 3] as const) {
+  const data = await post('hint', { level, position: hintPosition, previousHints });
+  if (typeof data.hint === 'string') previousHints.push(data.hint);
+}
+
+// 3. A chat question after the blunder.
+await post('chat', {
+  question: 'Why was Nxe5 a mistake?',
+  history: [],
+  position: buildPositionInfo(record.fenAfter, 'engine', null, ctx),
+  lastMove: buildLastMoveInfo(record, ctx),
 });
-console.log(`Response ${res.status}:`, await res.json());

@@ -1,28 +1,35 @@
 import 'dotenv/config';
 import express from 'express';
 import { PORT } from './config.ts';
-import { CoachError, coachComment } from './coach.ts';
-import { parseCommentRequest } from './validate.ts';
+import { CoachError, coachChat, coachComment, coachHint } from './coach.ts';
+import { parseChatRequest, parseCommentRequest, parseHintRequest } from './validate.ts';
 
 const app = express();
 app.use(express.json({ limit: '16kb' }));
 
-app.post('/api/coach/comment', async (req, res) => {
-  let parsed;
-  try {
-    parsed = parseCommentRequest(req.body);
-  } catch (err) {
-    res.status(400).json({ error: (err as Error).message });
-    return;
-  }
-  try {
-    res.json(await coachComment(parsed));
-  } catch (err) {
-    const e = err instanceof CoachError ? err : new CoachError(500, 'Unexpected server error');
-    console.error(`[coach] error: ${e.message}`);
-    res.status(e.status).json({ error: e.message });
-  }
-});
+/** Wraps a coach route: validate the body (400 on failure), then run the Claude call. */
+function coachRoute<Req, Res>(parse: (body: unknown) => Req, run: (req: Req) => Promise<Res>) {
+  return async (req: express.Request, res: express.Response) => {
+    let parsed: Req;
+    try {
+      parsed = parse(req.body);
+    } catch (err) {
+      res.status(400).json({ error: (err as Error).message });
+      return;
+    }
+    try {
+      res.json(await run(parsed));
+    } catch (err) {
+      const e = err instanceof CoachError ? err : new CoachError(500, 'Unexpected server error');
+      console.error(`[coach] error: ${e.message}`);
+      res.status(e.status).json({ error: e.message });
+    }
+  };
+}
+
+app.post('/api/coach/comment', coachRoute(parseCommentRequest, coachComment));
+app.post('/api/coach/chat', coachRoute(parseChatRequest, coachChat));
+app.post('/api/coach/hint', coachRoute(parseHintRequest, coachHint));
 
 // Bind to localhost only: this server holds the API key and is for local use.
 app.listen(PORT, '127.0.0.1', () => {

@@ -10,6 +10,13 @@ export const MODELS = {
 export const COMMENT_MAX_TOKENS = 1024;
 export const COMMENT_EFFORT = 'low' as const;
 
+export const CHAT_MAX_TOKENS = 1500;
+export const HINT_MAX_TOKENS = 1024;
+export const LIVE_EFFORT = 'low' as const; // chat and hints
+
+// Earlier chat turns sent with each question (token discipline).
+export const CHAT_HISTORY_TURNS = 6;
+
 // USD per million tokens, for the console cost log only (Haiku 5.5, prompts <= 100K tokens).
 // Check current prices at https://platform.claude.com/docs/en/about-claude/pricing
 export const PRICING: Record<string, { input: number; output: number }> = {

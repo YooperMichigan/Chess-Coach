@@ -1,4 +1,10 @@
-import type { CoachCommentRequest, EngineEval } from '../shared/coach-types.ts';
+import type {
+  CoachChatRequest,
+  CoachCommentRequest,
+  CoachHintRequest,
+  EngineEval,
+  PositionInfo,
+} from '../shared/coach-types.ts';
 
 export const MISTAKE_CATEGORIES = [
   'tactical-oversight',
@@ -64,4 +70,71 @@ export function buildCommentPrompt(r: CoachCommentRequest): string {
     `Engine best line after the move (opponent's best play): ${r.bestLineAfter || 'missing'}`,
     `Position now (FEN): ${r.fen}`,
   ].join('\n');
+}
+
+// Shared ground rules for every coach call: Stockfish supplies the chess, Claude explains it.
+const GROUND_RULES = `All chess facts come from Stockfish and are given to you in each message: evaluations, best moves and lines. Use only that data for any claim about evaluations or moves. Do not calculate variations yourself, do not invent lines, and do not judge a position beyond what the data supports. If a needed piece of engine data is missing, say so plainly instead of guessing.
+
+Evaluations are from the student's point of view, in pawns: +1.00 means the student is a pawn better. "M3" means the student can force mate in 3; "-M3" means the opponent can.
+
+Be direct. No praise, flattery or filler.`;
+
+export const CHAT_SYSTEM = `You are a chess coach sitting next to a student who is playing a game against the Stockfish engine. The student is asking you a question during the game. Speak to them directly, as "you".
+
+${GROUND_RULES}
+
+How to answer:
+- Answer the question asked, in 1-4 sentences. Use plain language.
+- Coach, don't solve. Unless the student asks directly for the best move, do not name it or the winning continuation; point them at the idea instead. If they do ask directly, give the engine's move and a one-line reason.
+- You cannot change the game, move pieces, or take back moves. If asked to, say so.
+- If the question is not about this game or chess improvement, briefly steer back to the game.`;
+
+export const HINT_SYSTEM = `You are a chess coach giving a student a graded hint during a game against the Stockfish engine. Speak to them directly, as "you".
+
+${GROUND_RULES}
+
+The student asks for hints one level at a time for the same position:
+- Level 1, nudge: one general idea or question. Do not name any piece, square or move.
+- Level 2, target: say which piece or area of the board to look at, and why it matters. Do not give the move itself.
+- Level 3, move: give the engine's best move in standard notation, with a one-line reason.
+
+Write one or two short sentences. Build on the earlier hints for this position rather than repeating them.`;
+
+function formatPosition(p: PositionInfo): string[] {
+  const toMove = p.gameResult
+    ? `Game over: ${p.gameResult}`
+    : p.toMove === 'player'
+      ? 'Student to move.'
+      : 'Engine to move (the student is waiting for its reply).';
+  return [
+    `Student plays: ${p.myColor}. Student level: ${p.playerLevel}. Engine opponent strength: ${p.engineStrength}.`,
+    `Recent moves: ${p.recentMoves || '(none yet)'}`,
+    toMove,
+    `Current evaluation: ${formatEval(p.eval)}`,
+    `Engine best move for the side to move: ${p.bestMove ?? 'missing'}`,
+    `Engine best line: ${p.bestLine || 'missing'}`,
+    `Position (FEN): ${p.fen}`,
+  ];
+}
+
+export function buildChatPrompt(r: CoachChatRequest): string {
+  const lines = ['Current game state:', ...formatPosition(r.position)];
+  if (r.lastMove) {
+    const m = r.lastMove;
+    const top = m.engineTopMove ? (m.wasTopChoice ? 'yes' : `no (engine preferred ${m.engineTopMove})`) : 'unknown';
+    lines.push(
+      `Student's last move: ${m.san}. Engine's top choice? ${top}.`,
+      `Evaluation before it: ${formatEval(m.evalBefore)}. After it: ${formatEval(m.evalAfter)}.`,
+    );
+  }
+  lines.push('', `Student's question: ${r.question}`);
+  return lines.join('\n');
+}
+
+export function buildHintPrompt(r: CoachHintRequest): string {
+  const lines = [`Give a level ${r.level} hint.`, ...formatPosition(r.position)];
+  if (r.previousHints.length) {
+    lines.push('Hints already given for this position:', ...r.previousHints.map((h, i) => `  Level ${i + 1}: ${h}`));
+  }
+  return lines.join('\n');
 }

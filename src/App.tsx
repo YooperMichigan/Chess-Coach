@@ -7,10 +7,16 @@ import { EvalBar } from './components/EvalBar';
 import { EngineLine } from './components/EngineLine';
 import { MoveList } from './components/MoveList';
 import { CoachPanel, type CoachNote } from './components/CoachPanel';
-import { requestComment } from './coach/api';
+import { requestChat, requestComment, requestHint } from './coach/api';
 import { detectTrigger, numberMoves, toPlayerScore } from './coach/triggers';
-import { buildCoachRequest, type PlayerMove } from './coach/request';
-import type { CoachTrigger } from '../shared/coach-types';
+import {
+  buildCoachRequest,
+  buildLastMoveInfo,
+  buildPositionInfo,
+  type PlayerMove,
+  type RequestContext,
+} from './coach/request';
+import type { ChatTurn, CoachTrigger, HintLevel } from '../shared/coach-types';
 import {
   ANALYSIS_DEPTH,
   BEST_LINE_LENGTH,
@@ -22,6 +28,13 @@ import {
 
 type Color = 'white' | 'black';
 type PromotionPiece = 'q' | 'r' | 'b' | 'n';
+
+const TRIGGER_LABEL: Record<CoachTrigger, string> = {
+  swing: 'Eval drop',
+  'missed-mate': 'Missed mate',
+  periodic: 'Check-in',
+  ask: 'You asked',
+};
 
 function gameOverText(game: Chess, resignedBy: Color | null): string | null {
   if (resignedBy) return `${resignedBy === 'white' ? 'White' : 'Black'} resigned.`;
@@ -67,6 +80,10 @@ export default function App() {
   const lastPlayerMoveRef = useRef<PlayerMove | null>(null);
   const playerMoveCountRef = useRef(0);
   const noteIdRef = useRef(0);
+  const chatHistoryRef = useRef<ChatTurn[]>([]);
+  const [queuedQuestion, setQueuedQuestion] = useState<string | null>(null);
+  // Hints given for the current position; a new position starts again at level 1.
+  const [hints, setHints] = useState<{ fen: string; texts: string[] }>({ fen: '', texts: [] });
 
   useEffect(() => {
     const engine = new StockfishEngine();
@@ -123,45 +140,109 @@ export default function App() {
   // Let the engine move once the position after your move has been fully analyzed,
   // so the coach always gets complete engine data for your move.
   const positionAnalyzed = analyzedFen === fen;
+  // Coach calls about the current position wait for Stockfish: the analysis must be finished
+  // and the opponent must not be searching.
+  const coachReady = isOver || (positionAnalyzed && !thinking);
+  const hintsGiven = hints.fen === fen ? hints.texts.length : 0;
+  const nextHint: HintLevel | null = hintsGiven < 3 ? ((hintsGiven + 1) as HintLevel) : null;
   useEffect(() => {
     if (engineReady && !isOver && !myTurn && !thinking && positionAnalyzed) void engineMove();
   }, [engineReady, fen, isOver, myTurn, thinking, positionAnalyzed, engineMove]);
 
-  async function callCoach(m: PlayerMove, trigger: CoachTrigger) {
-    // One call at a time, and never past the per-game cap.
-    if (coachBusyRef.current || callsUsedRef.current >= COACH.maxCallsPerGame) return;
+  const requestContext = (): RequestContext => ({
+    history: gameRef.current.history(),
+    myColor,
+    analysisOf: (f) => analysesRef.current.get(f),
+    engineStrength: STRENGTH_PRESETS[presetIndex].label,
+    playerLevel: COACH.playerLevel,
+    recentPlies: COACH.recentPlies,
+    bestLineLength: BEST_LINE_LENGTH,
+  });
+
+  const addNote = (note: Omit<CoachNote, 'id'>) => setNotes((n) => [...n, { ...note, id: ++noteIdRef.current }]);
+
+  /**
+   * Runs one coach call: one at a time, counted against the per-game cap, and dropped if a
+   * new game starts meanwhile. Errors become a note labelled `errorLabel`.
+   */
+  async function runCoach<T>(call: () => Promise<T>, onResult: (r: T) => void, errorLabel: string): Promise<boolean> {
+    if (coachBusyRef.current || callsUsedRef.current >= COACH.maxCallsPerGame) return false;
     const id = gameIdRef.current;
-    const request = buildCoachRequest(m, trigger, {
-      history: gameRef.current.history(),
-      myColor,
-      analysisOf: (f) => analysesRef.current.get(f),
-      engineStrength: STRENGTH_PRESETS[presetIndex].label,
-      playerLevel: COACH.playerLevel,
-      recentPlies: COACH.recentPlies,
-      bestLineLength: BEST_LINE_LENGTH,
-    });
-    const moveLabel = numberMoves([m.san], m.ply);
     coachBusyRef.current = true;
     callsUsedRef.current++;
     setCoachBusy(true);
     setCallsUsed(callsUsedRef.current);
     try {
-      const res = await requestComment(request);
-      if (id !== gameIdRef.current) return;
-      if (res.comment) {
-        setNotes((n) => [...n, { id: ++noteIdRef.current, moveLabel, trigger, text: res.comment, category: res.category }]);
-      }
+      const res = await call();
+      if (id === gameIdRef.current) onResult(res);
     } catch (err) {
-      if (id !== gameIdRef.current) return;
-      const text = err instanceof Error ? err.message : 'The coach request failed.';
-      setNotes((n) => [...n, { id: ++noteIdRef.current, moveLabel, trigger, text, category: null, error: true }]);
+      if (id === gameIdRef.current) {
+        addNote({ from: 'error', label: errorLabel, text: err instanceof Error ? err.message : 'The coach request failed.' });
+      }
     } finally {
       if (id === gameIdRef.current) {
         coachBusyRef.current = false;
         setCoachBusy(false);
       }
     }
+    return true;
   }
+
+  function callCoach(m: PlayerMove, trigger: CoachTrigger) {
+    const label = `${numberMoves([m.san], m.ply)} · ${TRIGGER_LABEL[trigger]}`;
+    return runCoach(
+      () => requestComment(buildCoachRequest(m, trigger, requestContext())),
+      (res) => {
+        if (res.comment) addNote({ from: 'coach', label, text: res.comment, category: res.category });
+      },
+      label,
+    );
+  }
+
+  /** The board now, as the coach sees it. Only called once Stockfish has finished with it. */
+  function currentPosition() {
+    const g = gameRef.current;
+    return buildPositionInfo(g.fen(), g.turn() === myColor[0] ? 'player' : 'engine', status, requestContext());
+  }
+
+  function askHint() {
+    const level = nextHint;
+    if (!level) return;
+    const position = currentPosition();
+    const previousHints = hints.fen === position.fen ? hints.texts : [];
+    void runCoach(
+      () => requestHint({ level, position, previousHints }),
+      (res) => {
+        addNote({ from: 'coach', label: `Hint ${level}/3`, text: res.hint });
+        setHints({ fen: position.fen, texts: [...previousHints, res.hint] });
+      },
+      `Hint ${level}/3`,
+    );
+  }
+
+  function sendChat(question: string) {
+    const position = currentPosition();
+    const m = lastPlayerMoveRef.current;
+    const lastMove = m ? buildLastMoveInfo(m, requestContext()) : null;
+    const history = chatHistoryRef.current.slice(-COACH.chatHistoryTurns);
+    void runCoach(
+      () => requestChat({ question, history, position, lastMove }),
+      (res) => {
+        addNote({ from: 'coach', label: 'Coach', text: res.reply });
+        chatHistoryRef.current.push({ role: 'user', text: question }, { role: 'assistant', text: res.reply });
+      },
+      'Coach',
+    );
+  }
+
+  // A chat question waits until Stockfish has finished with the current position and the
+  // coach is free, so it never goes out with half-computed engine data.
+  useEffect(() => {
+    if (queuedQuestion === null || !coachReady || coachBusy) return;
+    setQueuedQuestion(null);
+    sendChat(queuedQuestion);
+    // sendChat reads the latest position from refs and state.
+  }, [queuedQuestion, coachReady, coachBusy]);
 
   // When analysis of the position after your move finishes, decide whether the coach speaks.
   useEffect(() => {
@@ -222,6 +303,9 @@ export default function App() {
     setCoachBusy(false);
     setCallsUsed(0);
     setNotes([]);
+    chatHistoryRef.current = [];
+    setQueuedQuestion(null);
+    setHints({ fen: '', texts: [] });
     await engineRef.current?.newGame();
     setFen(gameRef.current.fen());
   }
@@ -281,12 +365,22 @@ export default function App() {
 
           <CoachPanel
             notes={notes}
-            busy={coachBusy}
+            status={
+              coachBusy ? 'Coach is thinking…' : queuedQuestion !== null ? 'Waiting for Stockfish to finish…' : null
+            }
             callsUsed={callsUsed}
             callsMax={COACH.maxCallsPerGame}
-            canAsk={lastPlayerMoveRef.current !== null}
-            periodicOn={periodicOn}
+            canAsk={lastPlayerMoveRef.current !== null && !coachBusy}
             onAsk={() => lastPlayerMoveRef.current && void callCoach(lastPlayerMoveRef.current, 'ask')}
+            nextHint={nextHint}
+            hintEnabled={coachReady && myTurn && !isOver && !coachBusy}
+            onHint={askHint}
+            chatEnabled={queuedQuestion === null && !coachBusy}
+            onSend={(q) => {
+              addNote({ from: 'you', label: 'You', text: q });
+              setQueuedQuestion(q);
+            }}
+            periodicOn={periodicOn}
             onTogglePeriodic={setPeriodicOn}
           />
 
