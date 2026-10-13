@@ -24,8 +24,9 @@ Claude must never be asked to evaluate a position, find a best move, or verify l
 5. Stockfish is GPLv3. This is fine for personal use, but flag it if I ever mention sharing or publishing the app.
 
 ## Models
-- **Live per-move comments and chat:** `claude-haiku-5-5` (cheap and fast)
-- **Post-game review:** `claude-sonnet-5-5` (better explanations)
+- **Live per-move comments, hints and chat:** `claude-sonnet-5-5` (changed from Haiku 5.5 for better explanations; roughly 20x the cost, still a few cents per game)
+- **Post-game review:** `claude-opus-5-5` (changed from Sonnet 5.5 for deeper explanations)
+- Non-Haiku models are called with the server-side refusal fallback (`fallbacks: "default"`).
 - Put model IDs in a single config file so they're easy to swap. Don't hardcode them in multiple places. Haiku 5.5 uses a newer tokenizer than older Haiku models, so don't reuse old token estimates.
 
 ## Architecture

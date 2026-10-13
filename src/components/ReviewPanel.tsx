@@ -28,7 +28,7 @@ export function ReviewPanel({ state, orientation }: { state: ReviewState; orient
           Stockfish is checking every move… {state.done}/{state.total} positions
         </p>
       )}
-      {state.kind === 'asking' && <p className="review-status">Sonnet is writing the review…</p>}
+      {state.kind === 'asking' && <p className="review-status">Opus is writing the review…</p>}
       {state.kind === 'error' && <p className="review-error">{state.message}</p>}
       {state.kind === 'done' && (
         <>

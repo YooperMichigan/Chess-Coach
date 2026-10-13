@@ -11,6 +11,7 @@ import type {
   ReviewRequest,
 } from '../shared/coach-types.ts';
 import {
+  CHAT_EFFORT,
   CHAT_HISTORY_TURNS,
   CHAT_MAX_TOKENS,
   COMMENT_EFFORT,
@@ -22,6 +23,7 @@ import {
   REVIEW_EFFORT,
   REVIEW_HISTORY_GAMES,
   REVIEW_MAX_TOKENS,
+  usesRefusalFallback,
 } from './config.ts';
 import {
   CHAT_SYSTEM,
@@ -111,13 +113,21 @@ function finish(route: string, message: ClaudeReply, requestedModel: string): { 
   return { text, costUsd };
 }
 
-/** One Haiku call with shared error handling and usage logging. */
+/**
+ * One Claude call with shared error handling, usage logging and cost. Models other than Haiku
+ * go through the beta endpoint with the server-side refusal fallback switched on.
+ */
 async function callClaude(
   route: string,
-  params: Omit<Anthropic.MessageCreateParamsNonStreaming, 'model'> & { model: string },
+  params: Omit<Anthropic.Beta.Messages.MessageCreateParamsNonStreaming, 'model' | 'betas' | 'fallbacks'> & {
+    model: string;
+  },
 ): Promise<{ text: string; costUsd: number }> {
   try {
-    return finish(route, await getClient().messages.create(params), params.model);
+    const fallback = usesRefusalFallback(params.model)
+      ? { betas: ['server-side-fallback-2026-07-01'], fallbacks: 'default' as const }
+      : {};
+    return finish(route, await getClient().beta.messages.create({ ...params, ...fallback }), params.model);
   } catch (err) {
     throw toCoachError(err);
   }
@@ -159,16 +169,16 @@ export async function coachChat(req: CoachChatRequest): Promise<CoachChatRespons
   const prompt = buildChatPrompt(req);
   if (dryRun('chat', prompt)) return { reply: '(dry run: no API call made)', costUsd: 0 };
   // Earlier turns go in as plain text; only the newest question carries the position data.
-  const history: Anthropic.MessageParam[] = req.history
+  const history: Anthropic.Beta.Messages.BetaMessageParam[] = req.history
     .slice(-CHAT_HISTORY_TURNS)
     .map((t) => ({ role: t.role, content: t.text }));
   // The API needs the first message to be from the user.
   while (history.length && history[0].role !== 'user') history.shift();
   const { text: reply, costUsd } = await callClaude('chat', {
-    model: MODELS.live,
+    model: MODELS.chat,
     max_tokens: CHAT_MAX_TOKENS,
     system: CHAT_SYSTEM,
-    output_config: { effort: LIVE_EFFORT },
+    output_config: { effort: CHAT_EFFORT },
     messages: [...history, { role: 'user', content: prompt }],
   });
   return { reply, costUsd };
@@ -189,23 +199,13 @@ export async function coachReview(req: ReviewRequest): Promise<GameReview> {
       focus: '(dry run focus)',
     };
   } else {
-    let result: { text: string; costUsd: number };
-    try {
-      // Sonnet 5.5 via the beta endpoint so a policy decline is retried server-side on
-      // Anthropic's recommended fallback model instead of failing the review.
-      const message = await getClient().beta.messages.create({
-        model: MODELS.review,
-        betas: ['server-side-fallback-2026-07-01'],
-        fallbacks: 'default',
-        max_tokens: REVIEW_MAX_TOKENS,
-        system: REVIEW_SYSTEM,
-        output_config: { effort: REVIEW_EFFORT, format: { type: 'json_schema', schema: REVIEW_SCHEMA } },
-        messages: [{ role: 'user', content: prompt }],
-      });
-      result = finish('review', message, MODELS.review);
-    } catch (err) {
-      throw toCoachError(err);
-    }
+    const result = await callClaude('review', {
+      model: MODELS.review,
+      max_tokens: REVIEW_MAX_TOKENS,
+      system: REVIEW_SYSTEM,
+      output_config: { effort: REVIEW_EFFORT, format: { type: 'json_schema', schema: REVIEW_SCHEMA } },
+      messages: [{ role: 'user', content: prompt }],
+    });
     costUsd = result.costUsd;
     try {
       parsed = JSON.parse(result.text);

@@ -396,7 +396,7 @@ export default function App() {
       setReview({ kind: 'error', message: 'The Stockfish pass was interrupted. Press Review again.' });
       return;
     }
-    // 2. The 3-5 biggest swings go to Sonnet with the game and your mistake history.
+    // 2. The 3-5 biggest swings go to the review model with the game and your mistake history.
     setReview({ kind: 'asking' });
     try {
       const result = await requestReview({
@@ -545,7 +545,7 @@ export default function App() {
                 {review.kind === 'done' ? 'Show review again' : 'Review this game'}
               </button>
               <span className="review-hint">
-                {savedGameId === null ? 'Saving the game…' : 'Stockfish finds your biggest mistakes; Sonnet explains them (a few cents).'}
+                {savedGameId === null ? 'Saving the game…' : 'Stockfish finds your biggest mistakes; Opus explains them (roughly 5-10 cents).'}
               </span>
             </div>
           )}
