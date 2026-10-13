@@ -50,9 +50,13 @@ export async function fetchUsage(): Promise<UsageSummary> {
   return res.json();
 }
 
-/** Dollar amounts here are fractions of a cent, so show enough digits to see them. */
+/**
+ * Dollar amounts here are often hundredths of a cent, so show the real figure to two
+ * significant digits (e.g. $0.000082) instead of rounding it away.
+ */
 export function formatUsd(usd: number): string {
   if (usd === 0) return '$0.00';
-  if (usd < 0.0001) return '<$0.0001';
-  return usd < 1 ? `$${usd.toFixed(4)}` : `$${usd.toFixed(2)}`;
+  if (usd >= 1) return `$${usd.toFixed(2)}`;
+  if (usd >= 0.01) return `$${usd.toFixed(3)}`;
+  return `$${usd.toPrecision(2).replace(/0+$/, '')}`;
 }
