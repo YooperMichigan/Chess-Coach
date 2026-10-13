@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import type { HintLevel, MistakeCategory } from '../../shared/coach-types';
+import { formatUsd } from '../coach/api';
 
 export interface CoachNote {
   id: number;
@@ -14,6 +15,7 @@ interface Props {
   status: string | null; // e.g. "Coach is thinking…"
   callsUsed: number;
   callsMax: number;
+  gameCostUsd: number;
   canAsk: boolean;
   onAsk: () => void;
   nextHint: HintLevel | null; // null = no hint available now
@@ -50,8 +52,8 @@ export function CoachPanel(p: Props) {
     <section className="coach" aria-label="Coach">
       <div className="coach-head">
         <h2>Coach</h2>
-        <span className="coach-count" title="Coach calls this game">
-          {p.callsUsed}/{p.callsMax}
+        <span className="coach-count" title="Coach calls and estimated API cost for this game">
+          {formatUsd(p.gameCostUsd)} this game · {p.callsUsed}/{p.callsMax} calls
         </span>
       </div>
       <div className="coach-notes" ref={feedRef} aria-live="polite">

@@ -139,3 +139,4 @@ label.inline { flex-direction: row; align-items: center; gap: 6px; }
 .cat-count { font-variant-numeric: tabular-nums; color: var(--muted); }
 .save-note { margin: 0; font-size: 0.85rem; color: var(--accent); }
 .history-error { margin: 0; font-size: 0.85rem; color: var(--danger); }
+.spend { margin: 0; font-size: 0.85rem; font-variant-numeric: tabular-nums; }

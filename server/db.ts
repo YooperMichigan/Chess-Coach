@@ -2,7 +2,13 @@ import Database from 'better-sqlite3';
 import { mkdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import type { MistakeCategory, MistakeSummary, PlayerScore, SaveGameRequest } from '../shared/coach-types.ts';
+import type {
+  MistakeCategory,
+  MistakeSummary,
+  PlayerScore,
+  SaveGameRequest,
+  UsageSummary,
+} from '../shared/coach-types.ts';
 
 // The database lives next to the project in data/ (gitignored). Override with CHESS_DB_PATH.
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -38,8 +44,24 @@ db.exec(`
     coach_note  TEXT
   );
   CREATE INDEX IF NOT EXISTS mistakes_game ON mistakes(game_id);
+  -- One row per Claude API call, for the in-app cost display.
+  CREATE TABLE IF NOT EXISTS api_usage (
+    id            INTEGER PRIMARY KEY,
+    at            TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
+    route         TEXT    NOT NULL,
+    model         TEXT    NOT NULL,
+    input_tokens  INTEGER NOT NULL,
+    output_tokens INTEGER NOT NULL,
+    cost_usd      REAL    NOT NULL
+  );
   CREATE INDEX IF NOT EXISTS games_played_at ON games(played_at);
 `);
+
+// Databases created before the cost column existed get it added here.
+const gameColumns = db.prepare(`PRAGMA table_info(games)`).all() as { name: string }[];
+if (!gameColumns.some((c) => c.name === 'coach_cost_usd')) {
+  db.exec(`ALTER TABLE games ADD COLUMN coach_cost_usd REAL NOT NULL DEFAULT 0`);
+}
 
 export function scoreToCp(s: PlayerScore | null): number | null {
   if (!s) return null;
@@ -48,8 +70,8 @@ export function scoreToCp(s: PlayerScore | null): number | null {
 }
 
 const insertGame = db.prepare(
-  `INSERT INTO games (pgn, result, engine_elo, engine_label, my_color)
-   VALUES (@pgn, @result, @engineElo, @engineLabel, @myColor)`,
+  `INSERT INTO games (pgn, result, engine_elo, engine_label, my_color, coach_cost_usd)
+   VALUES (@pgn, @result, @engineElo, @engineLabel, @myColor, @coachCostUsd)`,
 );
 const insertMistake = db.prepare(
   `INSERT INTO mistakes (game_id, move_number, fen, my_move, best_move, eval_before, eval_after, category, coach_note)
@@ -59,7 +81,14 @@ const insertMistake = db.prepare(
 /** Saves a game and its mistakes in one transaction. Returns the new game id. */
 export const saveGame = db.transaction((g: SaveGameRequest): number => {
   const gameId = Number(
-    insertGame.run({ pgn: g.pgn, result: g.result, engineElo: g.engineElo, engineLabel: g.engineLabel, myColor: g.myColor })
+    insertGame.run({
+      pgn: g.pgn,
+      result: g.result,
+      engineElo: g.engineElo,
+      engineLabel: g.engineLabel,
+      myColor: g.myColor,
+      coachCostUsd: g.coachCostUsd,
+    })
       .lastInsertRowid,
   );
   for (const m of g.mistakes) {
@@ -104,6 +133,7 @@ export function recentGames(limit: number) {
   return db
     .prepare(
       `SELECT g.id, g.played_at AS playedAt, g.result, g.engine_label AS engineLabel, g.my_color AS myColor,
+              g.coach_cost_usd AS coachCostUsd,
               (SELECT COUNT(*) FROM mistakes m WHERE m.game_id = g.id) AS mistakes
        FROM games g ORDER BY g.played_at DESC, g.id DESC LIMIT ?`,
     )
@@ -112,6 +142,24 @@ export function recentGames(limit: number) {
 
 export function gameMistakes(gameId: number) {
   return db.prepare(`SELECT * FROM mistakes WHERE game_id = ? ORDER BY move_number`).all(gameId);
+}
+
+const insertUsage = db.prepare(
+  `INSERT INTO api_usage (route, model, input_tokens, output_tokens, cost_usd)
+   VALUES (@route, @model, @inputTokens, @outputTokens, @costUsd)`,
+);
+export function recordUsage(u: { route: string; model: string; inputTokens: number; outputTokens: number; costUsd: number }) {
+  insertUsage.run(u);
+}
+
+const usageTotals = db.prepare(
+  `SELECT COALESCE(SUM(cost_usd), 0) AS totalUsd,
+          COALESCE(SUM(CASE WHEN substr(at, 1, 7) = strftime('%Y-%m', 'now') THEN cost_usd END), 0) AS monthUsd,
+          COUNT(*) AS calls
+   FROM api_usage`,
+);
+export function usageSummary(): UsageSummary {
+  return usageTotals.get() as UsageSummary;
 }
 
 export const dbPath = DB_PATH;

@@ -107,6 +107,9 @@ export default function App() {
   const savedGameRef = useRef<number | null>(null); // gameIdRef value already saved
   const [saveNote, setSaveNote] = useState<string | null>(null);
   const [historyKey, setHistoryKey] = useState(0);
+  // Estimated Claude API cost of this game's coach calls (from the server's token counts).
+  const [gameCost, setGameCost] = useState(0);
+  const gameCostRef = useRef(0);
 
   useEffect(() => {
     const engine = new StockfishEngine();
@@ -188,7 +191,11 @@ export default function App() {
    * Runs one coach call: one at a time, counted against the per-game cap, and dropped if a
    * new game starts meanwhile. Errors become a note labelled `errorLabel`.
    */
-  async function runCoach<T>(call: () => Promise<T>, onResult: (r: T) => void, errorLabel: string): Promise<boolean> {
+  async function runCoach<T extends { costUsd: number }>(
+    call: () => Promise<T>,
+    onResult: (r: T) => void,
+    errorLabel: string,
+  ): Promise<boolean> {
     if (coachBusyRef.current || callsUsedRef.current >= COACH.maxCallsPerGame) return false;
     const id = gameIdRef.current;
     coachBusyRef.current = true;
@@ -197,7 +204,12 @@ export default function App() {
     setCallsUsed(callsUsedRef.current);
     try {
       const res = await call();
-      if (id === gameIdRef.current) onResult(res);
+      if (id === gameIdRef.current) {
+        gameCostRef.current += res.costUsd;
+        setGameCost(gameCostRef.current);
+        onResult(res);
+      }
+      setHistoryKey((k) => k + 1); // refresh the app-wide spend
     } catch (err) {
       if (id === gameIdRef.current) {
         addNote({ from: 'error', label: errorLabel, text: err instanceof Error ? err.message : 'The coach request failed.' });
@@ -321,6 +333,7 @@ export default function App() {
       engineLabel: preset.label,
       myColor,
       mistakes: [...mistakesRef.current.values()],
+      coachCostUsd: gameCostRef.current,
     };
   }
 
@@ -394,6 +407,8 @@ export default function App() {
     setQueuedQuestion(null);
     setHints({ fen: '', texts: [] });
     mistakesRef.current = new Map();
+    gameCostRef.current = 0;
+    setGameCost(0);
     // Queue the engine reset first (it runs before any later search), then show the new
     // board right away so the status and the board never disagree.
     const engineReset = engineRef.current?.newGame();
@@ -461,6 +476,7 @@ export default function App() {
             }
             callsUsed={callsUsed}
             callsMax={COACH.maxCallsPerGame}
+            gameCostUsd={gameCost}
             canAsk={lastPlayerMoveRef.current !== null && !coachBusy}
             onAsk={() => lastPlayerMoveRef.current && void callCoach(lastPlayerMoveRef.current, 'ask')}
             nextHint={nextHint}

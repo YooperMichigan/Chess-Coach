@@ -157,5 +157,6 @@ export function parseSaveGameRequest(body: unknown): SaveGameRequest {
     engineLabel: str(b.engineLabel, 40, 'engineLabel'),
     myColor: color(b.myColor),
     mistakes: b.mistakes.map(parseMistake),
+    coachCostUsd: typeof b.coachCostUsd === 'number' && b.coachCostUsd >= 0 && b.coachCostUsd < 100 ? b.coachCostUsd : 0,
   };
 }

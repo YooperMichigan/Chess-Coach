@@ -28,6 +28,7 @@ import {
   buildCommentPrompt,
   buildHintPrompt,
 } from './prompts.ts';
+import { recordUsage } from './db.ts';
 
 let client: Anthropic | null = null;
 function getClient(): Anthropic {
@@ -49,7 +50,8 @@ export class CoachError extends Error {
 
 let sessionCostUsd = 0;
 
-function logUsage(route: string, model: string, usage: Anthropic.Usage) {
+/** Logs a call's tokens and estimated cost to the terminal and the database. Returns the cost. */
+function logUsage(route: string, model: string, usage: Anthropic.Usage): number {
   const price = PRICING[model];
   const cost = price ? (usage.input_tokens * price.input + usage.output_tokens * price.output) / 1_000_000 : 0;
   sessionCostUsd += cost;
@@ -57,20 +59,26 @@ function logUsage(route: string, model: string, usage: Anthropic.Usage) {
     `[coach] ${route} ${model} in=${usage.input_tokens} out=${usage.output_tokens}` +
       ` cost=$${cost.toFixed(5)} session=$${sessionCostUsd.toFixed(4)}`,
   );
+  try {
+    recordUsage({ route, model, inputTokens: usage.input_tokens, outputTokens: usage.output_tokens, costUsd: cost });
+  } catch (err) {
+    console.error('[db] could not record usage:', err);
+  }
+  return cost;
 }
 
 /** One Haiku/Sonnet call with shared error handling and usage logging. Returns the text output. */
 async function callClaude(
   route: string,
   params: Omit<Anthropic.MessageCreateParamsNonStreaming, 'model'> & { model: string },
-): Promise<string> {
+): Promise<{ text: string; costUsd: number }> {
   let message: Anthropic.Message;
   try {
     message = await getClient().messages.create(params);
   } catch (err) {
     throw toCoachError(err);
   }
-  logUsage(route, params.model, message.usage);
+  const costUsd = logUsage(route, params.model, message.usage);
   if (message.stop_reason === 'refusal') throw new CoachError(502, 'The coach declined to answer this one.');
   if (message.stop_reason === 'max_tokens') throw new CoachError(502, 'The coach ran out of room to answer. Try again.');
   // Haiku 5.5 may return thinking blocks first; read only the text blocks.
@@ -80,7 +88,7 @@ async function callClaude(
     .join('')
     .trim();
   if (!text) throw new CoachError(502, 'The coach returned no text.');
-  return text;
+  return { text, costUsd };
 }
 
 function dryRun(route: string, prompt: string): boolean {
@@ -94,9 +102,9 @@ export async function coachComment(req: CoachCommentRequest): Promise<CoachComme
   if (dryRun('comment', prompt)) {
     // A placeholder tag on mistakes lets the save-and-summary path be tested without the API.
     const tagged = req.trigger === 'swing' || req.trigger === 'missed-mate';
-    return { comment: '(dry run: no API call made)', category: tagged ? 'tactical-oversight' : null };
+    return { comment: '(dry run: no API call made)', category: tagged ? 'tactical-oversight' : null, costUsd: 0 };
   }
-  const text = await callClaude('comment', {
+  const { text, costUsd } = await callClaude('comment', {
     model: MODELS.live,
     max_tokens: COMMENT_MAX_TOKENS,
     system: COACH_SYSTEM,
@@ -112,39 +120,39 @@ export async function coachComment(req: CoachCommentRequest): Promise<CoachComme
   const category = (MISTAKE_CATEGORIES as readonly string[]).includes(parsed.category)
     ? (parsed.category as MistakeCategory)
     : null;
-  return { comment: parsed.comment.trim(), category };
+  return { comment: parsed.comment.trim(), category, costUsd };
 }
 
 export async function coachChat(req: CoachChatRequest): Promise<CoachChatResponse> {
   const prompt = buildChatPrompt(req);
-  if (dryRun('chat', prompt)) return { reply: '(dry run: no API call made)' };
+  if (dryRun('chat', prompt)) return { reply: '(dry run: no API call made)', costUsd: 0 };
   // Earlier turns go in as plain text; only the newest question carries the position data.
   const history: Anthropic.MessageParam[] = req.history
     .slice(-CHAT_HISTORY_TURNS)
     .map((t) => ({ role: t.role, content: t.text }));
   // The API needs the first message to be from the user.
   while (history.length && history[0].role !== 'user') history.shift();
-  const reply = await callClaude('chat', {
+  const { text: reply, costUsd } = await callClaude('chat', {
     model: MODELS.live,
     max_tokens: CHAT_MAX_TOKENS,
     system: CHAT_SYSTEM,
     output_config: { effort: LIVE_EFFORT },
     messages: [...history, { role: 'user', content: prompt }],
   });
-  return { reply };
+  return { reply, costUsd };
 }
 
 export async function coachHint(req: CoachHintRequest): Promise<CoachHintResponse> {
   const prompt = buildHintPrompt(req);
-  if (dryRun('hint', prompt)) return { hint: `(dry run: level ${req.level} hint, no API call made)` };
-  const hint = await callClaude(`hint-${req.level}`, {
+  if (dryRun('hint', prompt)) return { hint: `(dry run: level ${req.level} hint, no API call made)`, costUsd: 0 };
+  const { text: hint, costUsd } = await callClaude(`hint-${req.level}`, {
     model: MODELS.live,
     max_tokens: HINT_MAX_TOKENS,
     system: HINT_SYSTEM,
     output_config: { effort: LIVE_EFFORT },
     messages: [{ role: 'user', content: prompt }],
   });
-  return { hint };
+  return { hint, costUsd };
 }
 
 function toCoachError(err: unknown): CoachError {

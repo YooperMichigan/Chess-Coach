@@ -38,6 +38,7 @@ export interface CoachCommentRequest {
 export interface CoachCommentResponse {
   comment: string; // empty = nothing worth saying
   category: MistakeCategory | null;
+  costUsd: number; // estimated cost of this call
 }
 
 /** The position on the board right now, with Stockfish's view of it. */
@@ -77,6 +78,7 @@ export interface CoachChatRequest {
 
 export interface CoachChatResponse {
   reply: string;
+  costUsd: number; // estimated cost of this call
 }
 
 export type HintLevel = 1 | 2 | 3;
@@ -89,6 +91,7 @@ export interface CoachHintRequest {
 
 export interface CoachHintResponse {
   hint: string;
+  costUsd: number; // estimated cost of this call
 }
 
 // ---- Stage 5: saved games and mistakes ----
@@ -114,6 +117,7 @@ export interface SaveGameRequest {
   engineLabel: string; // e.g. "Elo 1500" or "Beginner (Skill 0)"
   myColor: 'white' | 'black';
   mistakes: MistakeRecord[];
+  coachCostUsd: number; // estimated Claude API cost of this game's coach calls
 }
 
 export interface SaveGameResponse {
@@ -125,4 +129,11 @@ export interface MistakeSummary {
   lastN: number; // games the counts below cover
   categories: { category: MistakeCategory; count: number }[];
   uncategorized: number; // mistakes the coach did not tag (e.g. comment cap reached)
+}
+
+/** Estimated Claude API spend recorded by this app. */
+export interface UsageSummary {
+  totalUsd: number;
+  monthUsd: number; // current calendar month (UTC)
+  calls: number;
 }

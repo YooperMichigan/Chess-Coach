@@ -3,7 +3,7 @@ import express from 'express';
 import { PORT } from './config.ts';
 import { CoachError, coachChat, coachComment, coachHint } from './coach.ts';
 import { parseChatRequest, parseCommentRequest, parseHintRequest, parseSaveGameRequest } from './validate.ts';
-import { dbPath, gameMistakes, mistakeSummary, recentGames, saveGame } from './db.ts';
+import { dbPath, gameMistakes, mistakeSummary, recentGames, saveGame, usageSummary } from './db.ts';
 
 const app = express();
 app.use(express.json({ limit: '16kb' }));
@@ -69,6 +69,11 @@ app.get('/api/games/:id/mistakes', (req, res) => {
 // Top recurring mistake categories over the last N games.
 app.get('/api/mistakes/summary', (req, res) => {
   res.json(mistakeSummary(intParam(req.query.lastN, 10, 1, 500)));
+});
+
+// Estimated Claude API spend recorded by this app (all time and this month).
+app.get('/api/usage', (_req, res) => {
+  res.json(usageSummary());
 });
 
 // Bind to localhost only: this server holds the API key and is for local use.
