@@ -7,6 +7,9 @@ node_modules/
 dist/
 public/stockfish/
 *.db
+*.db-wal
+*.db-shm
+data/
 *.db-journal
 *.log
 .DS_Store

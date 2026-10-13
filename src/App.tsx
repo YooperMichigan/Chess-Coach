@@ -7,7 +7,8 @@ import { EvalBar } from './components/EvalBar';
 import { EngineLine } from './components/EngineLine';
 import { MoveList } from './components/MoveList';
 import { CoachPanel, type CoachNote } from './components/CoachPanel';
-import { requestChat, requestComment, requestHint } from './coach/api';
+import { requestChat, requestComment, requestHint, saveGame } from './coach/api';
+import { HistoryPanel } from './components/HistoryPanel';
 import { detectTrigger, numberMoves, toPlayerScore } from './coach/triggers';
 import {
   buildCoachRequest,
@@ -16,13 +17,21 @@ import {
   type PlayerMove,
   type RequestContext,
 } from './coach/request';
-import type { ChatTurn, CoachTrigger, HintLevel } from '../shared/coach-types';
+import type {
+  ChatTurn,
+  CoachTrigger,
+  GameResult,
+  HintLevel,
+  MistakeRecord,
+  SaveGameRequest,
+} from '../shared/coach-types';
 import {
   ANALYSIS_DEPTH,
   BEST_LINE_LENGTH,
   COACH,
   DEFAULT_PRESET_INDEX,
   ENGINE_MOVE_TIME_MS,
+  HISTORY_LAST_N,
   STRENGTH_PRESETS,
 } from './config';
 
@@ -35,6 +44,13 @@ const TRIGGER_LABEL: Record<CoachTrigger, string> = {
   periodic: 'Check-in',
   ask: 'You asked',
 };
+
+function resultCode(game: Chess, resignedBy: Color | null): GameResult {
+  if (resignedBy) return resignedBy === 'white' ? '0-1' : '1-0';
+  if (game.isCheckmate()) return game.turn() === 'w' ? '0-1' : '1-0';
+  if (game.isDraw()) return '1/2-1/2';
+  return '*';
+}
 
 function gameOverText(game: Chess, resignedBy: Color | null): string | null {
   if (resignedBy) return `${resignedBy === 'white' ? 'White' : 'Black'} resigned.`;
@@ -84,6 +100,13 @@ export default function App() {
   const [queuedQuestion, setQueuedQuestion] = useState<string | null>(null);
   // Hints given for the current position; a new position starts again at level 1.
   const [hints, setHints] = useState<{ fen: string; texts: string[] }>({ fen: '', texts: [] });
+
+  // Mistakes found by Stockfish this game, keyed by ply. The coach's tag and note are added
+  // when its comment arrives. The game is saved to SQLite once it ends.
+  const mistakesRef = useRef(new Map<number, MistakeRecord>());
+  const savedGameRef = useRef<number | null>(null); // gameIdRef value already saved
+  const [saveNote, setSaveNote] = useState<string | null>(null);
+  const [historyKey, setHistoryKey] = useState(0);
 
   useEffect(() => {
     const engine = new StockfishEngine();
@@ -194,6 +217,11 @@ export default function App() {
       () => requestComment(buildCoachRequest(m, trigger, requestContext())),
       (res) => {
         if (res.comment) addNote({ from: 'coach', label, text: res.comment, category: res.category });
+        const mistake = mistakesRef.current.get(m.ply);
+        if (mistake && res.comment) {
+          mistake.category = res.category ?? mistake.category;
+          mistake.coachNote = res.comment;
+        }
       },
       label,
     );
@@ -259,9 +287,61 @@ export default function App() {
         periodicDue: periodicOn && playerMoveCountRef.current % COACH.periodicEvery === 0,
       },
     );
+    if (trigger === 'swing' || trigger === 'missed-mate') {
+      const info = buildLastMoveInfo(m, requestContext());
+      mistakesRef.current.set(m.ply, {
+        moveNumber: Math.floor(m.ply / 2) + 1,
+        fen: m.fenBefore,
+        myMove: m.san,
+        bestMove: info.engineTopMove,
+        evalBefore: info.evalBefore?.score ?? null,
+        evalAfter: info.evalAfter?.score ?? null,
+        category: null,
+        coachNote: null,
+      });
+    }
     if (trigger) void callCoach(m, trigger);
     // Runs only when an analysis finishes; callCoach reads the latest settings from refs and state.
   }, [analyzedFen]);
+
+  /** Snapshot of the current game for the database. */
+  function gameRecord(result: GameResult): SaveGameRequest {
+    const g = gameRef.current;
+    const preset = STRENGTH_PRESETS[presetIndex];
+    const engineName = `Stockfish, ${preset.label}`;
+    g.setHeader('Event', 'Chess Coach');
+    g.setHeader('Date', new Date().toISOString().slice(0, 10).replaceAll('-', '.'));
+    g.setHeader('White', myColor === 'white' ? 'You' : engineName);
+    g.setHeader('Black', myColor === 'black' ? 'You' : engineName);
+    g.setHeader('Result', result);
+    return {
+      pgn: g.pgn(),
+      result,
+      engineElo: preset.strength.kind === 'elo' ? preset.strength.elo : null,
+      engineLabel: preset.label,
+      myColor,
+      mistakes: [...mistakesRef.current.values()],
+    };
+  }
+
+  async function persistGame(record: SaveGameRequest) {
+    const n = record.mistakes.length;
+    try {
+      await saveGame(record);
+      setSaveNote(`Game saved${n ? ` with ${n} mistake${n === 1 ? '' : 's'}` : ''}.`);
+      setHistoryKey((k) => k + 1);
+    } catch (err) {
+      setSaveNote(`Game not saved: ${err instanceof Error ? err.message : 'unknown error'}`);
+    }
+  }
+
+  // Save once the game ends, after any coach comment still in flight has landed.
+  useEffect(() => {
+    if (!isOver || coachBusy || savedGameRef.current === gameIdRef.current) return;
+    savedGameRef.current = gameIdRef.current;
+    void persistGame(gameRecord(resultCode(gameRef.current, resignedBy)));
+    // gameRecord reads the finished game from refs and current settings.
+  }, [isOver, coachBusy]);
 
   function onPieceDrop({ sourceSquare, targetSquare }: PieceDropHandlerArgs): boolean {
     if (!targetSquare || isOver || !myTurn || thinking) return false;
@@ -289,6 +369,13 @@ export default function App() {
   }
 
   async function newGame(color: Color = myColor) {
+    // An abandoned game with at least one of your moves is saved as unfinished ('*').
+    if (!isOver && playerMoveCountRef.current > 0 && savedGameRef.current !== gameIdRef.current) {
+      savedGameRef.current = gameIdRef.current;
+      void persistGame(gameRecord('*'));
+    } else {
+      setSaveNote(null);
+    }
     gameIdRef.current++;
     setThinking(false);
     gameRef.current = new Chess();
@@ -306,8 +393,12 @@ export default function App() {
     chatHistoryRef.current = [];
     setQueuedQuestion(null);
     setHints({ fen: '', texts: [] });
-    await engineRef.current?.newGame();
+    mistakesRef.current = new Map();
+    // Queue the engine reset first (it runs before any later search), then show the new
+    // board right away so the status and the board never disagree.
+    const engineReset = engineRef.current?.newGame();
     setFen(gameRef.current.fen());
+    await engineReset;
   }
 
   async function changeStrength(index: number) {
@@ -421,6 +512,8 @@ export default function App() {
               Resign
             </button>
           </div>
+
+          <HistoryPanel lastN={HISTORY_LAST_N} refreshKey={historyKey} saveNote={saveNote} />
         </aside>
       </main>
     </div>

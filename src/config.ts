@@ -52,3 +52,7 @@ export const COACH = {
   // Tells the coach how to pitch its advice. Edit to describe yourself, e.g. "about 1200 online".
   playerLevel: 'not specified',
 };
+
+// ---- History (Stage 5) ----
+// How many recent games the "most common mistakes" summary covers.
+export const HISTORY_LAST_N = 10;

@@ -5,7 +5,11 @@ import type {
   CoachHintRequest,
   EngineEval,
   LastMoveInfo,
+  MistakeCategory,
+  MistakeRecord,
+  PlayerScore,
   PositionInfo,
+  SaveGameRequest,
 } from '../shared/coach-types.ts';
 
 // The client is local and trusted, but bad input should fail clearly rather than reach the API.
@@ -109,5 +113,49 @@ export function parseHintRequest(body: unknown): CoachHintRequest {
     level: b.level,
     position,
     previousHints: b.previousHints.map((h: unknown) => str(h, 600, 'previous hint')),
+  };
+}
+
+const RESULTS = ['1-0', '0-1', '1/2-1/2', '*'];
+const CATEGORIES = ['tactical-oversight', 'opening', 'positional', 'endgame', 'time', 'blunder-check'];
+
+function scoreOrNull(v: unknown, name: string): PlayerScore | null {
+  if (v === null) return null;
+  const s = v as Record<string, unknown>;
+  if (typeof s?.cp === 'number') return { cp: s.cp };
+  if (typeof s?.mate === 'number') return { mate: s.mate };
+  throw new Error(`Invalid ${name}`);
+}
+
+function parseMistake(v: unknown): MistakeRecord {
+  const m = (v ?? {}) as Record<string, unknown>;
+  if (typeof m.moveNumber !== 'number' || m.moveNumber < 1) throw new Error('Invalid mistake moveNumber');
+  if (m.category !== null && !CATEGORIES.includes(m.category as string)) throw new Error('Invalid mistake category');
+  return {
+    moveNumber: Math.floor(m.moveNumber),
+    fen: str(m.fen, 100, 'mistake fen'),
+    myMove: str(m.myMove, 10, 'mistake myMove'),
+    bestMove: nullableStr(m.bestMove, 10, 'mistake bestMove'),
+    evalBefore: scoreOrNull(m.evalBefore, 'mistake evalBefore'),
+    evalAfter: scoreOrNull(m.evalAfter, 'mistake evalAfter'),
+    category: m.category as MistakeCategory | null,
+    coachNote: nullableStr(m.coachNote, 1500, 'mistake coachNote'),
+  };
+}
+
+export function parseSaveGameRequest(body: unknown): SaveGameRequest {
+  const b = (body ?? {}) as Record<string, unknown>;
+  if (!RESULTS.includes(b.result as string)) throw new Error('Invalid result');
+  if (b.engineElo !== null && (typeof b.engineElo !== 'number' || b.engineElo < 0 || b.engineElo > 4000)) {
+    throw new Error('Invalid engineElo');
+  }
+  if (!Array.isArray(b.mistakes) || b.mistakes.length > 300) throw new Error('Invalid mistakes');
+  return {
+    pgn: str(b.pgn, 20_000, 'pgn'),
+    result: b.result as SaveGameRequest['result'],
+    engineElo: b.engineElo as number | null,
+    engineLabel: str(b.engineLabel, 40, 'engineLabel'),
+    myColor: color(b.myColor),
+    mistakes: b.mistakes.map(parseMistake),
   };
 }

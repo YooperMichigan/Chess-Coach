@@ -90,3 +90,39 @@ export interface CoachHintRequest {
 export interface CoachHintResponse {
   hint: string;
 }
+
+// ---- Stage 5: saved games and mistakes ----
+
+export type GameResult = '1-0' | '0-1' | '1/2-1/2' | '*'; // '*' = unfinished
+
+/** A move that cost the player more than the alert threshold, or missed a forced mate. */
+export interface MistakeRecord {
+  moveNumber: number; // full-move number, e.g. 4 for 4.Nxe5
+  fen: string; // position before the mistake
+  myMove: string; // SAN
+  bestMove: string | null; // engine's choice, SAN
+  evalBefore: PlayerScore | null;
+  evalAfter: PlayerScore | null;
+  category: MistakeCategory | null; // from the coach, when it commented
+  coachNote: string | null;
+}
+
+export interface SaveGameRequest {
+  pgn: string;
+  result: GameResult;
+  engineElo: number | null; // null for Skill Level presets
+  engineLabel: string; // e.g. "Elo 1500" or "Beginner (Skill 0)"
+  myColor: 'white' | 'black';
+  mistakes: MistakeRecord[];
+}
+
+export interface SaveGameResponse {
+  gameId: number;
+}
+
+export interface MistakeSummary {
+  gamesSaved: number; // all time
+  lastN: number; // games the counts below cover
+  categories: { category: MistakeCategory; count: number }[];
+  uncategorized: number; // mistakes the coach did not tag (e.g. comment cap reached)
+}

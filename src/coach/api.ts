@@ -5,6 +5,9 @@ import type {
   CoachCommentResponse,
   CoachHintRequest,
   CoachHintResponse,
+  MistakeSummary,
+  SaveGameRequest,
+  SaveGameResponse,
 } from '../../shared/coach-types';
 
 async function post<Res>(path: string, body: unknown): Promise<Res> {
@@ -28,3 +31,11 @@ async function post<Res>(path: string, body: unknown): Promise<Res> {
 export const requestComment = (body: CoachCommentRequest) => post<CoachCommentResponse>('/api/coach/comment', body);
 export const requestChat = (body: CoachChatRequest) => post<CoachChatResponse>('/api/coach/chat', body);
 export const requestHint = (body: CoachHintRequest) => post<CoachHintResponse>('/api/coach/hint', body);
+
+export const saveGame = (body: SaveGameRequest) => post<SaveGameResponse>('/api/games', body);
+
+export async function fetchMistakeSummary(lastN: number): Promise<MistakeSummary> {
+  const res = await fetch(`/api/mistakes/summary?lastN=${lastN}`);
+  if (!res.ok) throw new Error(`Could not load your history (server error ${res.status}).`);
+  return res.json();
+}

@@ -91,7 +91,11 @@ function dryRun(route: string, prompt: string): boolean {
 
 export async function coachComment(req: CoachCommentRequest): Promise<CoachCommentResponse> {
   const prompt = buildCommentPrompt(req);
-  if (dryRun('comment', prompt)) return { comment: '(dry run: no API call made)', category: null };
+  if (dryRun('comment', prompt)) {
+    // A placeholder tag on mistakes lets the save-and-summary path be tested without the API.
+    const tagged = req.trigger === 'swing' || req.trigger === 'missed-mate';
+    return { comment: '(dry run: no API call made)', category: tagged ? 'tactical-oversight' : null };
+  }
   const text = await callClaude('comment', {
     model: MODELS.live,
     max_tokens: COMMENT_MAX_TOKENS,

@@ -15,6 +15,8 @@ Other commands:
 - `npm run coach:test`: with the server running, sends one hardcoded blunder (1.e4 e5 2.Nf3 Nc6 3.Bc4 Nd4 4.Nxe5??) to the coach, asks for all three hint levels in the position before it, and asks one chat question, using real Stockfish evals
 - `npm run typecheck`
 
+Games are saved automatically when they end (checkmate, draw or resign). A game you abandon with "New game" after making at least one move is saved as unfinished (`*`). The database is `data/chess-coach.db` (gitignored); back it up by copying that file.
+
 Coach settings (eval-drop threshold, check-in interval, per-game cap, your level) are in `src/config.ts` under `COACH`. Model IDs are in `server/config.ts`.
 
 ## Status

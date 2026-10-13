@@ -127,3 +127,15 @@ label.inline { flex-direction: row; align-items: center; gap: 6px; }
   color: var(--text);
 }
 .coach-chat input:focus-visible, button:focus-visible, select:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+/* Stage 5: history panel */
+.history { display: flex; flex-direction: column; gap: 6px; border-top: 1px solid var(--border); padding-top: 12px; }
+.history-head { display: flex; align-items: baseline; justify-content: space-between; }
+.history-head h2 { margin: 0; font-size: 1rem; }
+.history-count, .history-sub { font-size: 0.82rem; color: var(--muted); margin: 0; }
+.history .empty { margin: 0; color: var(--muted); font-size: 0.85rem; }
+.history-cats { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px; }
+.history-cats li { display: flex; align-items: center; gap: 4px; font-size: 0.82rem; }
+.cat-count { font-variant-numeric: tabular-nums; color: var(--muted); }
+.save-note { margin: 0; font-size: 0.85rem; color: var(--accent); }
+.history-error { margin: 0; font-size: 0.85rem; color: var(--danger); }
