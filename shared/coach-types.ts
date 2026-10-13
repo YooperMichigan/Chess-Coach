@@ -9,7 +9,46 @@ export type MistakeCategory =
   | 'time'
   | 'blunder-check';
 
-export type CoachTrigger = 'swing' | 'missed-mate' | 'periodic' | 'ask';
+export type CoachTrigger = 'swing' | 'missed-mate' | 'key-moment' | 'periodic' | 'ask';
+
+/**
+ * Pattern tags the coach chooses from, so the app can count them across games. Generic
+ * tactical and structural patterns first, then ones specific to the London and the Dragon.
+ */
+export const PATTERN_TAGS = [
+  'fork',
+  'pin',
+  'skewer',
+  'discovered-attack',
+  'back-rank',
+  'overloaded-defender',
+  'undefended-piece',
+  'removal-of-defender',
+  'trapped-piece',
+  'open-file',
+  'weak-square',
+  'bad-bishop',
+  'pawn-break-timing',
+  'king-safety',
+  'piece-activity',
+  'development',
+  'london-f4-bishop',
+  'london-e5-outpost',
+  'london-b2-pressure',
+  'london-kingside-setup',
+  'dragon-g7-bishop',
+  'dragon-c-file',
+  'dragon-exchange-sac',
+  'dragon-pawn-race',
+] as const;
+export type PatternTag = (typeof PATTERN_TAGS)[number];
+
+/** One entry of what has been said in the coach panel this game, oldest first. */
+export interface TranscriptEntry {
+  from: 'coach' | 'you';
+  label: string; // e.g. "12. Nxe5 · Eval drop", "Hint 2/3", "You"
+  text: string;
+}
 
 /** Engine score from the player's point of view. */
 export type PlayerScore = { cp: number } | { mate: number };
@@ -34,11 +73,15 @@ export interface CoachCommentRequest {
   engineStrength: string;
   playerLevel: string;
   opening: string | null; // opening the player is practising and where the game stands against the book
+  keyMoment: string | null; // for 'key-moment': what happened, e.g. "you castled kingside"
+  transcript: TranscriptEntry[]; // recent coach notes this game, oldest first (so it does not repeat itself)
+  patternsThisGame: PatternTag[];
 }
 
 export interface CoachCommentResponse {
   comment: string; // empty = nothing worth saying
   category: MistakeCategory | null;
+  pattern: PatternTag | null; // the pattern at the heart of this moment
   costUsd: number; // estimated cost of this call
 }
 
@@ -73,7 +116,9 @@ export interface ChatTurn {
 
 export interface CoachChatRequest {
   question: string;
-  history: ChatTurn[]; // earlier turns this game, most recent last (capped by the client)
+  history: ChatTurn[]; // legacy: earlier chat turns; the transcript below replaces it
+  transcript: TranscriptEntry[]; // recent comments, hints and chat this game, oldest first
+  patternsThisGame: PatternTag[];
   position: PositionInfo;
   lastMove: LastMoveInfo | null;
 }
@@ -109,6 +154,7 @@ export interface MistakeRecord {
   evalBefore: PlayerScore | null;
   evalAfter: PlayerScore | null;
   category: MistakeCategory | null; // from the coach, when it commented
+  pattern: PatternTag | null;
   coachNote: string | null;
 }
 
@@ -130,6 +176,7 @@ export interface MistakeSummary {
   gamesSaved: number; // all time
   lastN: number; // games the counts below cover
   categories: { category: MistakeCategory; count: number }[];
+  patterns: { pattern: PatternTag; count: number }[]; // patterns behind mistakes, most frequent first
   uncategorized: number; // mistakes the coach did not tag (e.g. comment cap reached)
 }
 
@@ -171,6 +218,7 @@ export interface ReviewRequest {
 export interface ReviewedMoment extends CriticalMoment {
   explanation: string;
   category: MistakeCategory | null;
+  pattern: PatternTag | null;
 }
 
 export interface GameReview {

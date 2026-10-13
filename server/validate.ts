@@ -10,12 +10,36 @@ import type {
   PlayerScore,
   CriticalMoment,
   PositionInfo,
+  PatternTag,
   ReviewRequest,
+  TranscriptEntry,
   SaveGameRequest,
 } from '../shared/coach-types.ts';
+import { PATTERN_TAGS } from '../shared/coach-types.ts';
 
 // The client is local and trusted, but bad input should fail clearly rather than reach the API.
-const TRIGGERS = ['swing', 'missed-mate', 'periodic', 'ask'];
+const TRIGGERS = ['swing', 'missed-mate', 'key-moment', 'periodic', 'ask'];
+const OPENING_MAX = 2500; // opening status plus the book's explanations for nearby moves
+
+/** Recent coach panel entries (comments, hints, chat), oldest first. Optional for older clients. */
+function parseTranscript(v: unknown): TranscriptEntry[] {
+  if (v === undefined) return [];
+  if (!Array.isArray(v) || v.length > 12) throw new Error('Invalid transcript');
+  return v.map((e: Record<string, unknown>) => {
+    if (e?.from !== 'coach' && e?.from !== 'you') throw new Error('Invalid transcript entry');
+    return { from: e.from, label: str(e.label, 80, 'transcript label'), text: str(e.text, 1500, 'transcript text') };
+  });
+}
+
+function parsePatterns(v: unknown): PatternTag[] {
+  if (v === undefined) return [];
+  if (!Array.isArray(v) || v.length > 60) throw new Error('Invalid patterns');
+  return v.filter((p): p is PatternTag => (PATTERN_TAGS as readonly string[]).includes(p as string));
+}
+
+function patternOrNull(v: unknown): PatternTag | null {
+  return (PATTERN_TAGS as readonly string[]).includes(v as string) ? (v as PatternTag) : null;
+}
 
 function str(v: unknown, max: number, name: string): string {
   if (typeof v !== 'string' || v.length > max) throw new Error(`Invalid ${name}`);
@@ -52,7 +76,10 @@ export function parseCommentRequest(body: unknown): CoachCommentRequest {
     bestLineAfter: str(b.bestLineAfter, 200, 'bestLineAfter'),
     engineStrength: str(b.engineStrength, 40, 'engineStrength'),
     playerLevel: str(b.playerLevel, 60, 'playerLevel'),
-    opening: b.opening === undefined ? null : nullableStr(b.opening, 1000, 'opening'),
+    opening: b.opening === undefined ? null : nullableStr(b.opening, OPENING_MAX, 'opening'),
+    keyMoment: b.keyMoment === undefined ? null : nullableStr(b.keyMoment, 120, 'keyMoment'),
+    transcript: parseTranscript(b.transcript),
+    patternsThisGame: parsePatterns(b.patternsThisGame),
   };
 }
 
@@ -79,7 +106,7 @@ function parsePosition(v: unknown): PositionInfo {
     bestLine: str(p.bestLine, 200, 'bestLine'),
     engineStrength: str(p.engineStrength, 40, 'engineStrength'),
     playerLevel: str(p.playerLevel, 60, 'playerLevel'),
-    opening: p.opening === undefined ? null : nullableStr(p.opening, 1000, 'opening'),
+    opening: p.opening === undefined ? null : nullableStr(p.opening, OPENING_MAX, 'opening'),
   };
 }
 
@@ -104,7 +131,14 @@ export function parseChatRequest(body: unknown): CoachChatRequest {
     if (t?.role !== 'user' && t?.role !== 'assistant') throw new Error('Invalid history role');
     return { role: t.role, text: str(t.text, 1500, 'history text') };
   });
-  return { question, history, position: parsePosition(b.position), lastMove: parseLastMove(b.lastMove) };
+  return {
+    question,
+    history,
+    transcript: parseTranscript(b.transcript),
+    patternsThisGame: parsePatterns(b.patternsThisGame),
+    position: parsePosition(b.position),
+    lastMove: parseLastMove(b.lastMove),
+  };
 }
 
 export function parseHintRequest(body: unknown): CoachHintRequest {
@@ -143,6 +177,7 @@ function parseMistake(v: unknown): MistakeRecord {
     evalBefore: scoreOrNull(m.evalBefore, 'mistake evalBefore'),
     evalAfter: scoreOrNull(m.evalAfter, 'mistake evalAfter'),
     category: m.category as MistakeCategory | null,
+    pattern: patternOrNull(m.pattern),
     coachNote: nullableStr(m.coachNote, 1500, 'mistake coachNote'),
   };
 }
@@ -195,7 +230,7 @@ export function parseReviewRequest(body: unknown): ReviewRequest {
     result: b.result as ReviewRequest['result'],
     engineStrength: str(b.engineStrength, 40, 'engineStrength'),
     playerLevel: str(b.playerLevel, 60, 'playerLevel'),
-    opening: b.opening === undefined ? null : nullableStr(b.opening, 1000, 'opening'),
+    opening: b.opening === undefined ? null : nullableStr(b.opening, OPENING_MAX, 'opening'),
     moments: b.moments.map(parseMoment),
   };
 }

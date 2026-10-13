@@ -47,8 +47,11 @@ export const COACH = {
   maxCallsPerGame: 25,
   // How many recent half-moves to send (6-10).
   recentPlies: 10,
-  // Earlier chat messages sent with each new question (the server also caps this).
-  chatHistoryTurns: 6,
+  // Recent coach panel entries (comments, hints, chat) sent with each comment and chat
+  // message, so the coach can follow up on its own questions without repeating itself.
+  transcriptEntries: 8,
+  // Comment on structure-defining moments in your moves: castling, trades, pawn breaks.
+  keyMomentsDefaultOn: true,
   // Tells the coach how to pitch its advice. Edit to describe yourself, e.g. "about 1200 online".
   playerLevel: 'not specified',
 };

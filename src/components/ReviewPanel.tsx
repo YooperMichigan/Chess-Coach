@@ -68,6 +68,7 @@ export function ReviewPanel({ state, orientation }: { state: ReviewState; orient
                           {evalText(m.evalBefore)} → {evalText(m.evalAfter)}
                         </span>
                         {m.category && <span className="note-cat">{m.category}</span>}
+                        {m.pattern && <span className="note-pattern">{m.pattern}</span>}
                       </header>
                       <p>{m.explanation}</p>
                       {m.bestMove && m.bestMove !== m.myMove && (

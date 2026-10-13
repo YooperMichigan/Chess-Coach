@@ -458,20 +458,32 @@ export function pickBookReply(moves: BookMove[], random = Math.random): BookMove
 }
 
 /** One line for the coach describing the opening practice, or null if none is selected. */
+/**
+ * Context for the coach: what the student is practising, where the game stands against the
+ * book, and the repertoire's own explanations for the last few book moves and the next ones,
+ * so the coach teaches from the prepared ideas rather than from memory. Null if no opening
+ * is being practised with this colour.
+ */
 export function openingContext(opening: Opening | null, history: string[], myColor: 'white' | 'black'): string | null {
   if (!opening) return null;
   if (opening.side !== myColor) return null;
   const s = bookStatus(opening, history, myColor);
-  const name = `${opening.name} (as ${opening.side})`;
+  const label = (ply: number, san: string) => `${Math.floor(ply / 2) + 1}${ply % 2 === 0 ? '.' : '...'}${san}`;
+  const parts = [`The student is practising the ${opening.name} (as ${opening.side}).`];
+
+  const recentBook = s.played.filter((m) => m.inBook && m.why).slice(-3);
+  if (recentBook.length) {
+    parts.push(`Ideas behind the last book moves: ${recentBook.map((m) => `${label(m.ply, m.san)}: ${m.why}`).join(' ')}`);
+  }
   if (s.leftAt) {
-    const moveNo = Math.floor(s.leftAt.ply / 2) + 1;
-    const dots = s.leftAt.ply % 2 === 0 ? '.' : '...';
-    const book = s.leftAt.bookMoves.length ? `; the book had ${s.leftAt.bookMoves.join(' or ')}` : '';
-    const who = s.leftAt.by === 'you' ? 'the student' : 'the engine';
-    return `The student is practising the ${name}. ${who === 'the student' ? 'The student' : 'The engine'} left the prepared line with ${moveNo}${dots}${s.leftAt.san}${book}. ${opening.plans}`;
+    const book = s.leftAt.bookMoves.length ? ` (the book had ${s.leftAt.bookMoves.join(' or ')})` : '';
+    const who = s.leftAt.by === 'you' ? 'The student' : 'The engine';
+    parts.push(`${who} left the prepared line with ${label(s.leftAt.ply, s.leftAt.san)}${book}.`, `Typical plans: ${opening.plans}`);
+  } else if (s.next.length === 0 && history.length > 0) {
+    parts.push('The prepared line has ended.', `Typical plans: ${opening.plans}`);
+  } else if (s.next.length) {
+    const whose = s.nextSide === myColor ? "The student's book move" : 'Book replies for the engine';
+    parts.push(`${whose} next: ${s.next.slice(0, 3).map((m) => `${label(history.length, m.san)}: ${m.why}`).join(' ')}`);
   }
-  if (s.next.length === 0 && history.length > 0) {
-    return `The student is practising the ${name} and has reached the end of the prepared line. ${opening.plans}`;
-  }
-  return `The student is practising the ${name} and is still in the prepared line.`;
+  return parts.join(' ').replace(/Typical plans: Typical plans:/g, 'Typical plans:');
 }

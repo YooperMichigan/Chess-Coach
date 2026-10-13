@@ -51,7 +51,10 @@ function recent(history: string[], recentPlies: number): string {
 }
 
 /** Builds the coach request from Stockfish data only. Missing data is sent as null or empty. */
-export function buildCoachRequest(m: PlayerMove, trigger: CoachTrigger, ctx: RequestContext): CoachCommentRequest {
+/** The comment request minus the parts the app adds from the coach panel (key moment, transcript, patterns). */
+export type CoachRequestCore = Omit<CoachCommentRequest, 'keyMoment' | 'transcript' | 'patternsThisGame'>;
+
+export function buildCoachRequest(m: PlayerMove, trigger: CoachTrigger, ctx: RequestContext): CoachRequestCore {
   const before = ctx.analysisOf(m.fenBefore);
   const after = ctx.analysisOf(m.fenAfter);
   const last = buildLastMoveInfo(m, ctx);

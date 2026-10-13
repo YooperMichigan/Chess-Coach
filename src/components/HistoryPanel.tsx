@@ -64,6 +64,19 @@ export function HistoryPanel({ lastN, refreshKey, saveNote }: Props) {
               ))}
             </ul>
           )}
+          {summary.patterns.length > 0 && (
+            <>
+              <p className="history-sub">Patterns behind them:</p>
+              <ul className="history-cats">
+                {summary.patterns.map((p) => (
+                  <li key={p.pattern}>
+                    <span className="note-pattern">{p.pattern}</span>
+                    <span className="cat-count">×{p.count}</span>
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
           {summary.uncategorized > 0 && (
             <p className="history-sub">
               Plus {summary.uncategorized} mistake{summary.uncategorized === 1 ? '' : 's'} the coach didn't tag.

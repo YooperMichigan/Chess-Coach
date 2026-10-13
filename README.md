@@ -7,6 +7,7 @@ Double-click **Start Chess Coach** in the project folder. It updates the app, st
 
 ## Training features
 - **Opening trainer** (under the board): pick the London System (White) or the Sicilian Dragon (Black). It shows the book line as the game goes, with the idea behind every move, what the book plays next, and where you or Stockfish left the book; out of book it shows the set-up checklist and typical plans. Optionally Stockfish plays book replies so the openings actually arise. The repertoire lives in `src/openings/book.ts`.
+- **Question-first coaching:** the coach can ask you a question in a comment; answer in the chat box and it gives a verdict, because chat sees the recent comments and hints. It also comments on key moments (castling, trades, pawn breaks; toggle in the coach panel), tags each moment with a pattern (fork, back-rank, dragon-c-file, ...), and the history panel counts the patterns behind your mistakes.
 - **Coaching brief** (in the coach panel): tell the coach your goals and how you like to be coached. It's stored in the database and added to every coach prompt; the coach's rules still take priority.
 - **Your rating** (top right): an Elo-style rating from finished games against Stockfish, starting at 1200. Skill Level settings use estimated strengths (`shared/rating.ts`). The coach is told your rating.
 

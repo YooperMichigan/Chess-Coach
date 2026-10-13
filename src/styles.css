@@ -273,3 +273,4 @@ button.primary:hover:not(:disabled) { filter: brightness(1.08); }
 }
 /* With a capped height, flexbox would otherwise squash these instead of scrolling. */
 .controls > *, .opening-body > * { flex-shrink: 0; }
+.note-pattern { padding: 0 6px; border-radius: 999px; background: color-mix(in srgb, var(--accent) 14%, transparent); color: var(--text); }

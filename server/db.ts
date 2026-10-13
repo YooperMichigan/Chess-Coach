@@ -6,6 +6,7 @@ import type {
   GameReview,
   MistakeCategory,
   MistakeSummary,
+  PatternTag,
   PlayerScore,
   SaveGameRequest,
   UsageSummary,
@@ -69,6 +70,11 @@ const gameColumns = db.prepare(`PRAGMA table_info(games)`).all() as { name: stri
 if (!gameColumns.some((c) => c.name === 'coach_cost_usd')) {
   db.exec(`ALTER TABLE games ADD COLUMN coach_cost_usd REAL NOT NULL DEFAULT 0`);
 }
+// Pattern tag on each mistake (e.g. "fork", "dragon-c-file"), so recurring patterns can be counted.
+const mistakeColumns = db.prepare(`PRAGMA table_info(mistakes)`).all() as { name: string }[];
+if (!mistakeColumns.some((c) => c.name === 'pattern')) {
+  db.exec(`ALTER TABLE mistakes ADD COLUMN pattern TEXT`);
+}
 // The Stage 6 review is stored with its game so it can be shown again without paying twice.
 if (!gameColumns.some((c) => c.name === 'review_json')) {
   db.exec(`ALTER TABLE games ADD COLUMN review_json TEXT`);
@@ -85,8 +91,8 @@ const insertGame = db.prepare(
    VALUES (@pgn, @result, @engineElo, @engineLabel, @myColor, @coachCostUsd)`,
 );
 const insertMistake = db.prepare(
-  `INSERT INTO mistakes (game_id, move_number, fen, my_move, best_move, eval_before, eval_after, category, coach_note)
-   VALUES (@gameId, @moveNumber, @fen, @myMove, @bestMove, @evalBefore, @evalAfter, @category, @coachNote)`,
+  `INSERT INTO mistakes (game_id, move_number, fen, my_move, best_move, eval_before, eval_after, category, pattern, coach_note)
+   VALUES (@gameId, @moveNumber, @fen, @myMove, @bestMove, @evalBefore, @evalAfter, @category, @pattern, @coachNote)`,
 );
 
 /** Saves a game and its mistakes in one transaction. Returns the new game id. */
@@ -112,6 +118,7 @@ export const saveGame = db.transaction((g: SaveGameRequest): number => {
       evalBefore: scoreToCp(m.evalBefore),
       evalAfter: scoreToCp(m.evalAfter),
       category: m.category,
+      pattern: m.pattern,
       coachNote: m.coachNote,
     });
   }
@@ -127,6 +134,11 @@ const topCategories = db.prepare(
 const uncategorized = db.prepare(
   `SELECT COUNT(*) AS n FROM mistakes WHERE category IS NULL AND game_id IN (${recentGameIds})`,
 );
+const topPatterns = db.prepare(
+  `SELECT pattern, COUNT(*) AS count FROM mistakes
+   WHERE pattern IS NOT NULL AND game_id IN (${recentGameIds})
+   GROUP BY pattern ORDER BY count DESC, pattern LIMIT 8`,
+);
 const gameCount = db.prepare(`SELECT COUNT(*) AS n FROM games`);
 const coveredGames = db.prepare(`SELECT COUNT(*) AS n FROM (${recentGameIds})`);
 
@@ -136,6 +148,7 @@ export function mistakeSummary(lastN: number): MistakeSummary {
     gamesSaved: (gameCount.get() as { n: number }).n,
     lastN: (coveredGames.get({ lastN }) as { n: number }).n,
     categories: topCategories.all({ lastN }) as { category: MistakeCategory; count: number }[],
+    patterns: topPatterns.all({ lastN }) as { pattern: PatternTag; count: number }[],
     uncategorized: (uncategorized.get({ lastN }) as { n: number }).n,
   };
 }
@@ -183,7 +196,9 @@ export function storedReview(gameId: number): GameReview | null {
 }
 
 const findMistake = db.prepare(`SELECT id FROM mistakes WHERE game_id = ? AND move_number = ? AND my_move = ?`);
-const updateMistake = db.prepare(`UPDATE mistakes SET category = @category, coach_note = @coachNote WHERE id = @id`);
+const updateMistake = db.prepare(
+  `UPDATE mistakes SET category = @category, pattern = COALESCE(@pattern, pattern), coach_note = @coachNote WHERE id = @id`,
+);
 
 /**
  * Stores a review: its tags and explanations replace the live ones on matching mistakes, and
@@ -193,7 +208,7 @@ export const saveReview = db.transaction((review: GameReview) => {
   for (const m of review.moments) {
     const existing = findMistake.get(review.gameId, m.moveNumber, m.myMove) as { id: number } | undefined;
     if (existing) {
-      updateMistake.run({ id: existing.id, category: m.category, coachNote: m.explanation });
+      updateMistake.run({ id: existing.id, category: m.category, pattern: m.pattern, coachNote: m.explanation });
     } else {
       insertMistake.run({
         gameId: review.gameId,
@@ -204,6 +219,7 @@ export const saveReview = db.transaction((review: GameReview) => {
         evalBefore: scoreToCp(m.evalBefore),
         evalAfter: scoreToCp(m.evalAfter),
         category: m.category,
+        pattern: m.pattern,
         coachNote: m.explanation,
       });
     }

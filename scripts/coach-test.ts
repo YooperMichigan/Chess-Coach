@@ -86,7 +86,8 @@ async function post(route: string, body: unknown): Promise<Record<string, unknow
 }
 
 // 1. Live comment on the blunder.
-await post('comment', buildCoachRequest(record, trigger, ctx));
+const comment = await post('comment', { ...buildCoachRequest(record, trigger, ctx), keyMoment: null, transcript: [], patternsThisGame: [] });
+const coachSaid = typeof comment.comment === 'string' ? comment.comment : '';
 
 // 2. Hints for the position before the blunder (White to move after 3...Nd4).
 const hintPosition = buildPositionInfo(record.fenBefore, 'player', null, { ...ctx, history: SETUP });
@@ -96,10 +97,13 @@ for (const level of [1, 2, 3] as const) {
   if (typeof data.hint === 'string') previousHints.push(data.hint);
 }
 
-// 3. A chat question after the blunder.
+// 3. The student answers the coach in chat: the transcript carries the coach's comment, so the
+//    coach can give a verdict on the answer (question-first coaching).
 await post('chat', {
-  question: 'Why was Nxe5 a mistake?',
+  question: 'Because the knight on e5 is loose and Black can attack it while also hitting g2?',
   history: [],
+  transcript: coachSaid ? [{ from: 'coach', label: '4. Nxe5 · Eval drop', text: coachSaid }] : [],
+  patternsThisGame: [],
   position: buildPositionInfo(record.fenAfter, 'engine', null, ctx),
   lastMove: buildLastMoveInfo(record, ctx),
 });

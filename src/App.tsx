@@ -16,7 +16,7 @@ import { useFitToWindow } from './components/useFitToWindow';
 import { bookFor, openingById, openingContext, pickBookReply, positionKey } from './openings/book';
 import { analyzePlayerMoves, pickCriticalMoments } from './review/criticalMoments';
 import { HistoryPanel } from './components/HistoryPanel';
-import { detectTrigger, numberMoves, toPlayerScore } from './coach/triggers';
+import { detectKeyMoment, detectTrigger, numberMoves, toPlayerScore } from './coach/triggers';
 import {
   buildCoachRequest,
   buildLastMoveInfo,
@@ -25,12 +25,13 @@ import {
   type RequestContext,
 } from './coach/request';
 import type {
-  ChatTurn,
   CoachTrigger,
   GameResult,
   HintLevel,
   MistakeRecord,
+  PatternTag,
   SaveGameRequest,
+  TranscriptEntry,
 } from '../shared/coach-types';
 import {
   ANALYSIS_DEPTH,
@@ -72,6 +73,7 @@ const TRIGGER_LABEL: Record<CoachTrigger, string> = {
   'missed-mate': 'Missed mate',
   periodic: 'Check-in',
   ask: 'You asked',
+  'key-moment': 'Key moment',
 };
 
 function resultCode(game: Chess, resignedBy: Color | null): GameResult {
@@ -119,13 +121,16 @@ export default function App() {
   const [coachBusy, setCoachBusy] = useState(false);
   const [callsUsed, setCallsUsed] = useState(0);
   const [periodicOn, setPeriodicOn] = useState(COACH.periodicDefaultOn);
+  const [keyMomentsOn, setKeyMomentsOn] = useState<boolean>(() => loadPref('keyMoments', COACH.keyMomentsDefaultOn));
+  // Async coach calls read the coach panel through this ref, so they always see the latest notes.
+  const notesRef = useRef(notes);
+  notesRef.current = notes;
   const coachBusyRef = useRef(false);
   const callsUsedRef = useRef(0);
   const pendingReviewRef = useRef<PlayerMove | null>(null); // awaiting analysis
   const lastPlayerMoveRef = useRef<PlayerMove | null>(null);
   const playerMoveCountRef = useRef(0);
   const noteIdRef = useRef(0);
-  const chatHistoryRef = useRef<ChatTurn[]>([]);
   const [queuedQuestion, setQueuedQuestion] = useState<string | null>(null);
   // Hints given for the current position; a new position starts again at level 1.
   const [hints, setHints] = useState<{ fen: string; texts: string[] }>({ fen: '', texts: [] });
@@ -297,15 +302,34 @@ export default function App() {
     return true;
   }
 
-  function callCoach(m: PlayerMove, trigger: CoachTrigger) {
+  /** What has been said in the coach panel this game (oldest first), so the coach can follow on. */
+  function transcript(dropTrailingQuestion?: string): TranscriptEntry[] {
+    let entries = notesRef.current.filter((n) => n.from !== 'error');
+    const last = entries[entries.length - 1];
+    if (dropTrailingQuestion && last?.from === 'you' && last.text === dropTrailingQuestion) entries = entries.slice(0, -1);
+    return entries.slice(-COACH.transcriptEntries).map((n) => ({ from: n.from === 'you' ? 'you' : 'coach', label: n.label, text: n.text }));
+  }
+
+  /** Patterns the coach has tagged on this game's mistakes so far. */
+  const patternsThisGame = (): PatternTag[] =>
+    [...mistakesRef.current.values()].map((m) => m.pattern).filter((p): p is PatternTag => p !== null);
+
+  function callCoach(m: PlayerMove, trigger: CoachTrigger, keyMoment: string | null = null) {
     const label = `${numberMoves([m.san], m.ply)} · ${TRIGGER_LABEL[trigger]}`;
     return runCoach(
-      () => requestComment(buildCoachRequest(m, trigger, requestContext())),
+      () =>
+        requestComment({
+          ...buildCoachRequest(m, trigger, requestContext()),
+          keyMoment,
+          transcript: transcript(),
+          patternsThisGame: patternsThisGame(),
+        }),
       (res) => {
-        if (res.comment) addNote({ from: 'coach', label, text: res.comment, category: res.category });
+        if (res.comment) addNote({ from: 'coach', label, text: res.comment, category: res.category, pattern: res.pattern });
         const mistake = mistakesRef.current.get(m.ply);
         if (mistake && res.comment) {
           mistake.category = res.category ?? mistake.category;
+          mistake.pattern = res.pattern ?? mistake.pattern;
           mistake.coachNote = res.comment;
         }
       },
@@ -338,13 +362,17 @@ export default function App() {
     const position = currentPosition();
     const m = lastPlayerMoveRef.current;
     const lastMove = m ? buildLastMoveInfo(m, requestContext()) : null;
-    const history = chatHistoryRef.current.slice(-COACH.chatHistoryTurns);
     void runCoach(
-      () => requestChat({ question, history, position, lastMove }),
-      (res) => {
-        addNote({ from: 'coach', label: 'Coach', text: res.reply });
-        chatHistoryRef.current.push({ role: 'user', text: question }, { role: 'assistant', text: res.reply });
-      },
+      () =>
+        requestChat({
+          question,
+          history: [],
+          transcript: transcript(question),
+          patternsThisGame: patternsThisGame(),
+          position,
+          lastMove,
+        }),
+      (res) => addNote({ from: 'coach', label: 'Coach', text: res.reply }),
       'Coach',
     );
   }
@@ -365,12 +393,14 @@ export default function App() {
     pendingReviewRef.current = null;
     const before = analysesRef.current.get(m.fenBefore);
     const after = analysesRef.current.get(m.fenAfter);
+    const keyMoment = keyMomentsOn ? detectKeyMoment(m.fenBefore, m.uci) : null;
     const trigger = detectTrigger(
       before ? toPlayerScore(before.score, myColor) : null,
       after ? toPlayerScore(after.score, myColor) : null,
       {
         thresholdCp: COACH.swingThresholdCp,
         periodicDue: periodicOn && playerMoveCountRef.current % COACH.periodicEvery === 0,
+        keyMoment: keyMoment !== null,
       },
     );
     if (trigger === 'swing' || trigger === 'missed-mate') {
@@ -383,10 +413,11 @@ export default function App() {
         evalBefore: info.evalBefore?.score ?? null,
         evalAfter: info.evalAfter?.score ?? null,
         category: null,
+        pattern: null,
         coachNote: null,
       });
     }
-    if (trigger) void callCoach(m, trigger);
+    if (trigger) void callCoach(m, trigger, trigger === 'key-moment' ? keyMoment : null);
     // Runs only when an analysis finishes; callCoach reads the latest settings from refs and state.
   }, [analyzedFen]);
 
@@ -536,7 +567,6 @@ export default function App() {
     setCoachBusy(false);
     setCallsUsed(0);
     setNotes([]);
-    chatHistoryRef.current = [];
     setQueuedQuestion(null);
     setHints({ fen: '', texts: [] });
     mistakesRef.current = new Map();
@@ -658,6 +688,11 @@ export default function App() {
             }}
             periodicOn={periodicOn}
             onTogglePeriodic={setPeriodicOn}
+            keyMomentsOn={keyMomentsOn}
+            onToggleKeyMoments={(on) => {
+              setKeyMomentsOn(on);
+              savePref('keyMoments', on);
+            }}
           />
 
           <EngineLine

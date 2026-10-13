@@ -8,6 +8,7 @@ import type {
   CoachHintResponse,
   GameReview,
   MistakeCategory,
+  PatternTag,
   ReviewRequest,
 } from '../shared/coach-types.ts';
 import {
@@ -37,8 +38,10 @@ import {
   buildCommentPrompt,
   buildHintPrompt,
   buildReviewPrompt,
+  patternRecord,
   withBrief,
 } from './prompts.ts';
+import { PATTERN_TAGS } from '../shared/coach-types.ts';
 import { getSetting, mistakeSummary, recordUsage, saveReview, storedReview } from './db.ts';
 
 let client: Anthropic | null = null;
@@ -140,12 +143,23 @@ function dryRun(route: string, prompt: string): boolean {
   return true;
 }
 
+const asPattern = (v: unknown): PatternTag | null =>
+  (PATTERN_TAGS as readonly string[]).includes(v as string) ? (v as PatternTag) : null;
+
+/** The app's pattern counts for the prompt: saved games plus the current game so far. */
+const currentPatternRecord = (thisGame: PatternTag[]) => patternRecord(mistakeSummary(REVIEW_HISTORY_GAMES), thisGame);
+
 export async function coachComment(req: CoachCommentRequest): Promise<CoachCommentResponse> {
-  const prompt = buildCommentPrompt(req);
+  const prompt = buildCommentPrompt(req, currentPatternRecord(req.patternsThisGame));
   if (dryRun('comment', prompt)) {
-    // A placeholder tag on mistakes lets the save-and-summary path be tested without the API.
+    // Placeholder tags on mistakes let the save-and-summary path be tested without the API.
     const tagged = req.trigger === 'swing' || req.trigger === 'missed-mate';
-    return { comment: '(dry run: no API call made)', category: tagged ? 'tactical-oversight' : null, costUsd: 0 };
+    return {
+      comment: '(dry run: no API call made)',
+      category: tagged ? 'tactical-oversight' : null,
+      pattern: tagged ? 'undefended-piece' : null,
+      costUsd: 0,
+    };
   }
   const { text, costUsd } = await callClaude('comment', {
     model: MODELS.live,
@@ -154,7 +168,7 @@ export async function coachComment(req: CoachCommentRequest): Promise<CoachComme
     output_config: { effort: COMMENT_EFFORT, format: { type: 'json_schema', schema: COMMENT_SCHEMA } },
     messages: [{ role: 'user', content: prompt }],
   });
-  let parsed: { comment: string; category: string };
+  let parsed: { comment: string; category: string; pattern: string };
   try {
     parsed = JSON.parse(text);
   } catch {
@@ -163,11 +177,11 @@ export async function coachComment(req: CoachCommentRequest): Promise<CoachComme
   const category = (MISTAKE_CATEGORIES as readonly string[]).includes(parsed.category)
     ? (parsed.category as MistakeCategory)
     : null;
-  return { comment: parsed.comment.trim(), category, costUsd };
+  return { comment: parsed.comment.trim(), category, pattern: asPattern(parsed.pattern), costUsd };
 }
 
 export async function coachChat(req: CoachChatRequest): Promise<CoachChatResponse> {
-  const prompt = buildChatPrompt(req);
+  const prompt = buildChatPrompt(req, currentPatternRecord(req.patternsThisGame));
   if (dryRun('chat', prompt)) return { reply: '(dry run: no API call made)', costUsd: 0 };
   // Earlier turns go in as plain text; only the newest question carries the position data.
   const history: Anthropic.Beta.Messages.BetaMessageParam[] = req.history
@@ -190,11 +204,21 @@ export async function coachReview(req: ReviewRequest): Promise<GameReview> {
   if (stored) return stored; // already reviewed: show it again at no cost
   const history = mistakeSummary(REVIEW_HISTORY_GAMES);
   const prompt = buildReviewPrompt(req, history);
-  let parsed: { moments: { index: number; explanation: string; category: string }[]; summary: string; recurring: string; focus: string };
+  let parsed: {
+    moments: { index: number; explanation: string; category: string; pattern: string }[];
+    summary: string;
+    recurring: string;
+    focus: string;
+  };
   let costUsd = 0;
   if (dryRun('review', prompt)) {
     parsed = {
-      moments: req.moments.map((_, index) => ({ index, explanation: '(dry run: no API call made)', category: 'tactical-oversight' })),
+      moments: req.moments.map((_, index) => ({
+        index,
+        explanation: '(dry run: no API call made)',
+        category: 'tactical-oversight',
+        pattern: 'fork',
+      })),
       summary: '(dry run summary)',
       recurring: '(dry run recurring weaknesses)',
       focus: '(dry run focus)',
@@ -220,7 +244,12 @@ export async function coachReview(req: ReviewRequest): Promise<GameReview> {
     moments: req.moments.map((m, i) => {
       const r = byIndex.get(i);
       const category = r && (MISTAKE_CATEGORIES as readonly string[]).includes(r.category) ? (r.category as MistakeCategory) : null;
-      return { ...m, explanation: r?.explanation.trim() || 'No explanation was returned for this moment.', category };
+      return {
+        ...m,
+        explanation: r?.explanation.trim() || 'No explanation was returned for this moment.',
+        category,
+        pattern: asPattern(r?.pattern),
+      };
     }),
     summary: parsed.summary.trim(),
     recurring: parsed.recurring.trim(),

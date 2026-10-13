@@ -123,6 +123,10 @@ Each press escalates one level for the current position. Reset on the next move.
 - **Opening trainer:** hand-written repertoire in `src/openings/book.ts` (London as White, Dragon as Black), keyed by position so transpositions match. Every line must stay legal (chess.js) and each book move should be checked with Stockfish. Stockfish may play book replies while in book (a deterministic choice from the book, never from Claude). The opening and book status are passed to the coach as context.
 - **Coaching brief:** the player's goals and preferred style, stored in the `settings` table and appended to every coach system prompt inside `<student_brief>`; the coach's rules take priority over it.
 - **Rating:** Elo-style rating replayed from finished games (`shared/rating.ts`), shown in the header and passed to the coach as the player's level.
+- **Question-first coaching support:** comment and chat requests carry a transcript of the coach panel (last 8 entries), so the coach can ask a question in a comment and give a verdict on the answer in chat. Chat may use up to 6 sentences for a verdict or principle.
+- **Opening context:** the coach gets the repertoire's own explanations for the last book moves and the next ones, and must teach opening ideas from that text, not from memory.
+- **Patterns:** comments and reviews tag each moment with one tag from `PATTERN_TAGS` (`shared/coach-types.ts`); tags are stored on `mistakes.pattern`, and the app's counts (saved games + this game) are passed as a "Pattern record" line. The coach may only cite counts from that line.
+- **Key-moment trigger:** castling, capturing a minor/major piece, and pawn breaks in the player's move (detected from the board, no engine judgement) trigger a comment when on (toggle in the coach panel). Priority: eval drop > missed mate > key moment > periodic.
 
 ## Things to flag to me, not decide silently
 - Any place where Claude's output could affect game state (it shouldn't)

@@ -1,12 +1,15 @@
+import { PATTERN_TAGS } from '../shared/coach-types.ts';
 import type {
   CoachChatRequest,
   CoachCommentRequest,
   CoachHintRequest,
   EngineEval,
   MistakeSummary,
+  PatternTag,
   PlayerScore,
   PositionInfo,
   ReviewRequest,
+  TranscriptEntry,
 } from '../shared/coach-types.ts';
 
 export const MISTAKE_CATEGORIES = [
@@ -17,6 +20,14 @@ export const MISTAKE_CATEGORIES = [
   'time',
   'blunder-check',
 ] as const;
+
+const PATTERN_LIST = PATTERN_TAGS.join(', ');
+
+// How to use the opening, transcript and pattern-record lines the app adds to messages.
+const CONTEXT_RULES = `Context the app may add to a message:
+- "Opening practice": the student is drilling this opening, with the app's prepared repertoire and the ideas behind nearby book moves. Explain opening ideas from that text rather than from memory, and make no move-order claims it does not contain.
+- "Recent coaching": what you and the student said earlier this game, oldest first. Don't repeat yourself. If your last message asked the student a question, their next message is their answer.
+- "Pattern record": how often each pattern has come up in the student's mistakes, counted by the app. Only cite a recurrence count if it is in this line; never estimate or invent one.`;
 
 export const COACH_SYSTEM = `You are a chess coach sitting next to a student who is playing a game against the Stockfish engine. You speak to the student directly, as "you".
 
@@ -29,6 +40,11 @@ How to coach:
 - Evaluations are from the student's point of view, in pawns: +1.00 means the student is a pawn better. "M3" means the student can force mate in 3; "-M3" means the opponent can.
 - If nothing is worth saying (for example, a routine periodic check-in in a quiet position), return an empty comment.
 - If an "Opening practice" line is given, the student is drilling that opening. When it matters, relate your comment to it: point out leaving the prepared line, or connect advice to the opening's typical plans.
+- At a key moment (castling, a pawn break, a trade), comment only if it teaches something about the structure or plan; otherwise return an empty comment.
+
+${CONTEXT_RULES}
+
+Set "pattern" to the one tag that best names the pattern at the heart of this moment, or "none": ${PATTERN_LIST}.
 
 Set "category" to the mistake type when the student's move was a significant mistake: tactical-oversight, opening, positional, endgame, time, or blunder-check (a move played without checking the opponent's forcing replies). Otherwise set it to "none".`;
 
@@ -37,14 +53,16 @@ export const COMMENT_SCHEMA = {
   properties: {
     comment: { type: 'string' },
     category: { type: 'string', enum: [...MISTAKE_CATEGORIES, 'none'] },
+    pattern: { type: 'string', enum: [...PATTERN_TAGS, 'none'] },
   },
-  required: ['comment', 'category'],
+  required: ['comment', 'category', 'pattern'],
   additionalProperties: false,
 };
 
 const TRIGGER_TEXT: Record<CoachCommentRequest['trigger'], string> = {
   swing: 'the evaluation swung against the student by more than the alert threshold',
   'missed-mate': 'the student had a forced mate and the move did not keep it',
+  'key-moment': 'a structure-defining moment in the game (see "Key moment" below); comment only if it teaches something',
   periodic: 'routine check-in every few moves; comment only if there is a useful strategic point',
   ask: 'the student pressed "Ask coach"',
 };
@@ -56,7 +74,26 @@ function formatEval(e: EngineEval | null): string {
   return `${v} (depth ${e.depth})`;
 }
 
-export function buildCommentPrompt(r: CoachCommentRequest): string {
+/** "Recent coaching" lines from the coach panel transcript, oldest first. */
+function transcriptLines(t: TranscriptEntry[]): string[] {
+  if (!t.length) return [];
+  return ['Recent coaching this game (oldest first):', ...t.map((e) => `  ${e.from === 'coach' ? 'Coach' : 'Student'} [${e.label}]: ${e.text}`)];
+}
+
+/**
+ * The app's count of patterns behind the student's mistakes: saved games plus this game so far.
+ * Returns null when there is nothing recorded yet.
+ */
+export function patternRecord(history: MistakeSummary, thisGame: PatternTag[]): string | null {
+  const counts = new Map<string, number>();
+  for (const p of thisGame) counts.set(p, (counts.get(p) ?? 0) + 1);
+  const saved = history.patterns.map((p) => `${p.pattern} ${p.count}`).join(', ');
+  const current = [...counts].map(([p, n]) => `${p} ${n}`).join(', ');
+  if (!saved && !current) return null;
+  return `Pattern record (counted by the app): last ${history.lastN} saved game${history.lastN === 1 ? '' : 's'}: ${saved || 'none'}; this game so far: ${current || 'none'}.`;
+}
+
+export function buildCommentPrompt(r: CoachCommentRequest, record: string | null): string {
   const top = r.engineTopMove
     ? r.wasTopChoice
       ? 'yes'
@@ -73,7 +110,10 @@ export function buildCommentPrompt(r: CoachCommentRequest): string {
     `Engine best line before the move: ${r.bestLineBefore || 'missing'}`,
     `Engine best line after the move (opponent's best play): ${r.bestLineAfter || 'missing'}`,
     `Position now (FEN): ${r.fen}`,
+    ...(r.keyMoment ? [`Key moment: ${r.keyMoment}`] : []),
     ...(r.opening ? [`Opening practice: ${r.opening}`] : []),
+    ...(record ? [record] : []),
+    ...transcriptLines(r.transcript),
   ].join('\n');
 }
 
@@ -91,10 +131,12 @@ export const CHAT_SYSTEM = `You are a chess coach sitting next to a student who 
 ${GROUND_RULES}
 
 How to answer:
-- Answer the question asked, in 1-4 sentences. Use plain language.
+- Answer the question asked, usually in 1-4 sentences, in plain language. You may use up to 6 when giving a verdict on the student's answer to a question you asked, or when explaining a principle.
 - Coach, don't solve. Unless the student asks directly for the best move, do not name it or the winning continuation; point them at the idea instead. If they do ask directly, give the engine's move and a one-line reason.
 - You cannot change the game, move pieces, or take back moves. If asked to, say so.
-- If the question is not about this game or chess improvement, briefly steer back to the game.`;
+- If the question is not about this game or chess improvement, briefly steer back to the game.
+
+${CONTEXT_RULES}`;
 
 export const HINT_SYSTEM = `You are a chess coach giving a student a graded hint during a game against the Stockfish engine. Speak to them directly, as "you".
 
@@ -125,7 +167,7 @@ function formatPosition(p: PositionInfo): string[] {
   ];
 }
 
-export function buildChatPrompt(r: CoachChatRequest): string {
+export function buildChatPrompt(r: CoachChatRequest, record: string | null): string {
   const lines = ['Current game state:', ...formatPosition(r.position)];
   if (r.lastMove) {
     const m = r.lastMove;
@@ -135,7 +177,9 @@ export function buildChatPrompt(r: CoachChatRequest): string {
       `Evaluation before it: ${formatEval(m.evalBefore)}. After it: ${formatEval(m.evalAfter)}.`,
     );
   }
-  lines.push('', `Student's question: ${r.question}`);
+  if (record) lines.push(record);
+  lines.push(...transcriptLines(r.transcript));
+  lines.push('', `Student's message: ${r.question}`);
   return lines.join('\n');
 }
 
@@ -155,6 +199,7 @@ This is the post-game review, so you may name the engine's best moves and lines.
 
 For each critical moment (the student's largest evaluation swings, found by Stockfish):
 - Explain in plain language, in 2-4 sentences, what went wrong and the idea behind the engine's preferred move: a missed tactic, a weakened square, king safety, piece activity, pawn structure, and so on.
+- Tag it with the pattern at its heart, from: ${PATTERN_LIST} (or "none").
 - Tag it with one category: tactical-oversight, opening, positional, endgame, time, or blunder-check (a move played without checking the opponent's forcing replies). Use "none" only if the swing was not really the student's mistake.
 
 Then write:
@@ -173,8 +218,9 @@ export const REVIEW_SCHEMA = {
           index: { type: 'integer' },
           explanation: { type: 'string' },
           category: { type: 'string', enum: [...MISTAKE_CATEGORIES, 'none'] },
+          pattern: { type: 'string', enum: [...PATTERN_TAGS, 'none'] },
         },
-        required: ['index', 'explanation', 'category'],
+        required: ['index', 'explanation', 'category', 'pattern'],
         additionalProperties: false,
       },
     },
@@ -218,6 +264,7 @@ export function buildReviewPrompt(r: ReviewRequest, history: MistakeSummary): st
   if (history.categories.length === 0) lines.push('  none tagged yet');
   for (const c of history.categories) lines.push(`  ${c.category}: ${c.count}`);
   if (history.uncategorized) lines.push(`  untagged mistakes: ${history.uncategorized}`);
+  lines.push(`Patterns behind those mistakes: ${history.patterns.map((p) => `${p.pattern} ${p.count}`).join(', ') || 'none tagged yet'}`);
   lines.push('', `Return one entry in "moments" for each critical moment, using its index.`);
   return lines.join('\n');
 }

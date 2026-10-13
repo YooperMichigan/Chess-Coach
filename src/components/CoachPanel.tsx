@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
-import type { HintLevel, MistakeCategory } from '../../shared/coach-types';
+import type { HintLevel, MistakeCategory, PatternTag } from '../../shared/coach-types';
 import { formatUsd } from '../coach/api';
 import { CoachingBrief } from './CoachingBrief';
 
@@ -9,6 +9,7 @@ export interface CoachNote {
   label: string; // e.g. "4. Nxe5 · Eval drop", "Hint 2/3", "You"
   text: string;
   category?: MistakeCategory | null;
+  pattern?: PatternTag | null;
 }
 
 interface Props {
@@ -26,6 +27,8 @@ interface Props {
   onSend: (question: string) => void;
   periodicOn: boolean;
   onTogglePeriodic: (on: boolean) => void;
+  keyMomentsOn: boolean;
+  onToggleKeyMoments: (on: boolean) => void;
 }
 
 const HINT_LABEL: Record<HintLevel, string> = { 1: 'Hint: nudge', 2: 'Hint: where to look', 3: 'Hint: show move' };
@@ -66,6 +69,7 @@ export function CoachPanel(p: Props) {
             <header>
               <span className="note-label">{n.label}</span>
               {n.category && <span className="note-cat">{n.category}</span>}
+              {n.pattern && <span className="note-pattern">{n.pattern}</span>}
             </header>
             <p>{n.text}</p>
           </article>
@@ -100,6 +104,10 @@ export function CoachPanel(p: Props) {
       <label className="inline">
         <input id="periodic-toggle" type="checkbox" checked={p.periodicOn} onChange={(e) => p.onTogglePeriodic(e.target.checked)} />
         Strategic note every few moves
+      </label>
+      <label className="inline">
+        <input id="key-moments-toggle" type="checkbox" checked={p.keyMomentsOn} onChange={(e) => p.onToggleKeyMoments(e.target.checked)} />
+        Comment on key moments (castling, trades, pawn breaks)
       </label>
       <CoachingBrief />
     </section>
