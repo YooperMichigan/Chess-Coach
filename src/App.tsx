@@ -4,7 +4,7 @@ import { Chessboard, type PieceDropHandlerArgs } from 'react-chessboard';
 import { StockfishEngine, type AnalysisInfo } from './engine/stockfish';
 import { pvToSan } from './engine/format';
 import { EvalBar } from './components/EvalBar';
-import { EngineLine } from './components/EngineLine';
+import { EngineLine, type EngineView } from './components/EngineLine';
 import { MoveList } from './components/MoveList';
 import { CoachPanel, type CoachNote } from './components/CoachPanel';
 import { fetchRating, requestChat, requestComment, requestHint, requestReview, saveGame } from './coach/api';
@@ -12,6 +12,7 @@ import { RatingBadge } from './components/RatingBadge';
 import type { RatingSummary } from '../shared/rating';
 import { ReviewPanel, type ReviewState } from './components/ReviewPanel';
 import { OpeningPanel } from './components/OpeningPanel';
+import { CapturedPieces } from './components/CapturedPieces';
 import { useFitToWindow } from './components/useFitToWindow';
 import { bookFor, openingById, openingContext, pickBookReply, positionKey } from './openings/book';
 import { analyzePlayerMoves, pickCriticalMoments } from './review/criticalMoments';
@@ -121,6 +122,9 @@ export default function App() {
   const [coachBusy, setCoachBusy] = useState(false);
   const [callsUsed, setCallsUsed] = useState(0);
   const [periodicOn, setPeriodicOn] = useState(COACH.periodicDefaultOn);
+  // How much engine analysis to show while playing (the eval bar and the Stockfish box).
+  const [engineView, setEngineView] = useState<EngineView>(() => loadPref('engineView', 'full'));
+  const [showCaptured, setShowCaptured] = useState<boolean>(() => loadPref('showCaptured', false));
   const [keyMomentsOn, setKeyMomentsOn] = useState<boolean>(() => loadPref('keyMoments', COACH.keyMomentsDefaultOn));
   // Async coach calls read the coach panel through this ref, so they always see the latest notes.
   const notesRef = useRef(notes);
@@ -619,7 +623,7 @@ export default function App() {
       <main>
         <div className="left-col">
         <div className="board-wrap">
-          <EvalBar score={barScore} resultLabel={resultLabel} orientation={myColor} />
+          <EvalBar score={barScore} resultLabel={resultLabel} orientation={myColor} hidden={engineView === 'hidden' && !isOver} />
           <div className="board">
           <Chessboard
             options={{
@@ -688,6 +692,21 @@ export default function App() {
             }}
             periodicOn={periodicOn}
             onTogglePeriodic={setPeriodicOn}
+            showCaptured={showCaptured}
+            onToggleCaptured={(on) => {
+              setShowCaptured(on);
+              savePref('showCaptured', on);
+            }}
+            captured={
+              <CapturedPieces
+                history={game.history()}
+                myColor={myColor}
+                onClose={() => {
+                  setShowCaptured(false);
+                  savePref('showCaptured', false);
+                }}
+              />
+            }
             keyMomentsOn={keyMomentsOn}
             onToggleKeyMoments={(on) => {
               setKeyMomentsOn(on);
@@ -700,6 +719,11 @@ export default function App() {
             depth={current?.depth ?? 0}
             line={current ? pvToSan(fen, current.pv, BEST_LINE_LENGTH) : ''}
             gameOver={isOver ? 'Game over.' : null}
+            view={engineView}
+            onViewChange={(v) => {
+              setEngineView(v);
+              savePref('engineView', v);
+            }}
           />
 
           <MoveList moves={game.history()} />

@@ -274,3 +274,38 @@ button.primary:hover:not(:disabled) { filter: brightness(1.08); }
 /* With a capped height, flexbox would otherwise squash these instead of scrolling. */
 .controls > *, .opening-body > * { flex-shrink: 0; }
 .note-pattern { padding: 0 6px; border-radius: 999px; background: color-mix(in srgb, var(--accent) 14%, transparent); color: var(--text); }
+
+/* Engine display toggle */
+.engine-view { margin-left: 8px; font-size: 0.78rem; padding: 2px 6px; }
+.engine-pv.muted { color: var(--muted); font-family: inherit; font-style: italic; }
+.eval-bar.eval-hidden { background: var(--border); }
+.eval-bar.eval-hidden .eval-white { background: var(--border); }
+
+/* Captured pieces toggle and pop-up card */
+.coach-actions { position: relative; }
+button.toggle.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+.captured {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 5;
+  width: min(300px, 100%);
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 0.88rem;
+}
+.captured-head { display: flex; align-items: center; justify-content: space-between; }
+.captured-close { border: none; background: none; font-size: 1.2rem; line-height: 1; padding: 0 4px; color: var(--muted); }
+.captured-row { display: grid; grid-template-columns: 7.5em 1fr; align-items: center; gap: 6px; }
+.captured-who { color: var(--muted); }
+.captured-glyphs { font-size: 1.35rem; line-height: 1.2; letter-spacing: 0.04em; word-break: break-all; }
+.captured-balance { margin: 0; font-weight: 600; }
+.captured-balance.up { color: var(--accent); }
+.captured-balance.down { color: var(--danger); }
+.captured-units { font-weight: 400; font-size: 0.75rem; color: var(--muted); }

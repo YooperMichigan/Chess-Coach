@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import type { HintLevel, MistakeCategory, PatternTag } from '../../shared/coach-types';
 import { formatUsd } from '../coach/api';
 import { CoachingBrief } from './CoachingBrief';
@@ -29,6 +29,9 @@ interface Props {
   onTogglePeriodic: (on: boolean) => void;
   keyMomentsOn: boolean;
   onToggleKeyMoments: (on: boolean) => void;
+  showCaptured: boolean;
+  onToggleCaptured: (on: boolean) => void;
+  captured: ReactNode; // the captured-pieces card, shown when showCaptured is on
 }
 
 const HINT_LABEL: Record<HintLevel, string> = { 1: 'Hint: nudge', 2: 'Hint: where to look', 3: 'Hint: show move' };
@@ -100,6 +103,15 @@ export function CoachPanel(p: Props) {
         <button id="ask-coach" onClick={p.onAsk} disabled={!p.canAsk || capped}>
           Ask coach
         </button>
+        <button
+          id="captured-toggle"
+          className={`toggle${p.showCaptured ? ' on' : ''}`}
+          aria-pressed={p.showCaptured}
+          onClick={() => p.onToggleCaptured(!p.showCaptured)}
+        >
+          Captured
+        </button>
+        {p.showCaptured && p.captured}
       </div>
       <label className="inline">
         <input id="periodic-toggle" type="checkbox" checked={p.periodicOn} onChange={(e) => p.onTogglePeriodic(e.target.checked)} />
