@@ -347,3 +347,6 @@ button.toggle.on { background: var(--accent); border-color: var(--accent); color
 .captured-balance.up { color: var(--accent); }
 .captured-balance.down { color: var(--danger); }
 .captured-units { font-weight: 400; font-size: 0.75rem; color: var(--muted); }
+
+/* "Resumed your game" note under the status line */
+.resume-note { margin: 0; display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 0.85rem; padding: 6px 10px; border-left: 3px solid var(--accent); background: color-mix(in srgb, var(--accent) 10%, transparent); }

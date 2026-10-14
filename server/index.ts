@@ -24,7 +24,9 @@ import {
 import { COACHING_BRIEF_MAX } from './prompts.ts';
 
 const app = express();
-app.use(express.json({ limit: '16kb' }));
+// Small bodies everywhere, except the saved game in progress, which has its own larger limit.
+const smallJson = express.json({ limit: '16kb' });
+app.use((req, res, next) => (req.path === '/api/current-game' ? next() : smallJson(req, res, next)));
 
 /** Wraps a coach route: validate the body (400 on failure), then run the Claude call. */
 function coachRoute<Req, Res>(parse: (body: unknown) => Req, run: (req: Req) => Promise<Res>) {
@@ -103,6 +105,26 @@ app.get('/api/mistakes/summary', (req, res) => {
 // The player's in-app rating, estimated from finished games against Stockfish.
 app.get('/api/rating', (_req, res) => {
   res.json(playerRating());
+});
+
+// The game in progress, saved after every move so it survives closing the browser or the app.
+const CURRENT_GAME_KEY = 'currentGame';
+app.get('/api/current-game', (_req, res) => {
+  const raw = getSetting(CURRENT_GAME_KEY);
+  res.json(raw ? JSON.parse(raw) : null);
+});
+app.put('/api/current-game', express.json({ limit: '512kb' }), (req, res) => {
+  const g = req.body as Record<string, unknown> | null;
+  if (!g || g.version !== 1 || !Array.isArray(g.moves) || !g.moves.every((m) => typeof m === 'string' && m.length <= 10)) {
+    res.status(400).json({ error: 'Invalid saved game.' });
+    return;
+  }
+  setSetting(CURRENT_GAME_KEY, JSON.stringify(g));
+  res.json({ ok: true });
+});
+app.delete('/api/current-game', (_req, res) => {
+  setSetting(CURRENT_GAME_KEY, '');
+  res.json({ ok: true });
 });
 
 // The coaching brief: the student's goals and preferred coaching style, added to every coach prompt.

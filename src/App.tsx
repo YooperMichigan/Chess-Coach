@@ -7,7 +7,17 @@ import { EvalBar } from './components/EvalBar';
 import { EngineLine, type EngineView } from './components/EngineLine';
 import { MoveList } from './components/MoveList';
 import { CoachPanel, type CoachNote } from './components/CoachPanel';
-import { fetchRating, requestChat, requestComment, requestHint, requestReview, saveGame } from './coach/api';
+import {
+  clearCurrentGame,
+  fetchCurrentGame,
+  fetchRating,
+  requestChat,
+  requestComment,
+  requestHint,
+  requestReview,
+  saveCurrentGame,
+  saveGame,
+} from './coach/api';
 import { HeaderPanel } from './components/HeaderPanel';
 import { boardStyle, themeById } from './themes';
 import type { RatingSummary } from '../shared/rating';
@@ -33,6 +43,7 @@ import type {
   MistakeRecord,
   PatternTag,
   SaveGameRequest,
+  SavedGameState,
   TranscriptEntry,
 } from '../shared/coach-types';
 import {
@@ -152,6 +163,11 @@ export default function App() {
 
   // Post-game review: available once the finished game is saved (it needs the game's id).
   const [savedGameId, setSavedGameId] = useState<number | null>(null);
+
+  // Auto-save of the game in progress: nothing is saved until the start-up restore has run,
+  // so an empty board on load never overwrites the saved game.
+  const restoredRef = useRef(false);
+  const [resumeNotice, setResumeNotice] = useState<string | null>(null);
   const [review, setReview] = useState<ReviewState>({ kind: 'idle' });
 
   // The right-hand column fits the window on wide screens and scrolls inside.
@@ -532,6 +548,95 @@ export default function App() {
     }
   }
 
+  /** Puts a saved game in progress back on the board, with its coach panel and history. */
+  async function restoreGame(saved: SavedGameState) {
+    const g = new Chess();
+    try {
+      for (const san of saved.moves) g.move(san);
+    } catch {
+      void clearCurrentGame(); // unreadable save: start fresh
+      return;
+    }
+    gameIdRef.current++;
+    gameRef.current = g;
+    setThinking(false);
+    setResignedBy(null);
+    setMyColor(saved.myColor);
+    analysesRef.current.clear();
+    pendingReviewRef.current = null;
+    const moves = g.history({ verbose: true });
+    let last = -1;
+    moves.forEach((m, i) => {
+      if (m.color === saved.myColor[0]) last = i;
+    });
+    lastPlayerMoveRef.current =
+      last >= 0 ? { ply: last, san: moves[last].san, uci: moves[last].lan, fenBefore: moves[last].before, fenAfter: moves[last].after } : null;
+    playerMoveCountRef.current = saved.playerMoveCount;
+    setNotes(saved.notes.map((n) => ({ ...n, id: ++noteIdRef.current })));
+    callsUsedRef.current = saved.callsUsed;
+    setCallsUsed(saved.callsUsed);
+    gameCostRef.current = saved.gameCostUsd;
+    setGameCost(saved.gameCostUsd);
+    mistakesRef.current = new Map(saved.mistakes);
+    coachBusyRef.current = false;
+    setCoachBusy(false);
+    setQueuedQuestion(null);
+    setHints({ fen: '', texts: [] });
+    setSavedGameId(null);
+    setReview({ kind: 'idle' });
+    savedGameRef.current = null;
+    if (STRENGTH_PRESETS[saved.presetIndex] && saved.presetIndex !== presetIndex) await changeStrength(saved.presetIndex);
+    const engineReset = engineRef.current?.newGame();
+    setFen(g.fen());
+    await engineReset;
+    const when = new Date(saved.savedAt).toLocaleString(undefined, { weekday: 'short', hour: 'numeric', minute: '2-digit' });
+    setResumeNotice(`Resumed your game from ${when}.`);
+  }
+
+  // On start-up, pick up the game in progress if there is one.
+  useEffect(() => {
+    let cancelled = false;
+    fetchCurrentGame()
+      .then(async (saved) => {
+        // Skip if a move was already made on the fresh board while this was loading.
+        if (!cancelled && saved && saved.moves.length > 0 && gameRef.current.history().length === 0) await restoreGame(saved);
+      })
+      .catch(() => undefined)
+      .finally(() => {
+        if (!cancelled) restoredRef.current = true;
+      });
+    return () => {
+      cancelled = true;
+    };
+    // Runs once on start-up.
+  }, []);
+
+  // Save the game in progress shortly after anything changes; clear it once the game is over
+  // (finished games are stored in the games table) or the board is empty.
+  useEffect(() => {
+    if (!restoredRef.current) return;
+    const timer = setTimeout(() => {
+      const g = gameRef.current;
+      if (isOver || g.history().length === 0) {
+        void clearCurrentGame();
+        return;
+      }
+      void saveCurrentGame({
+        version: 1,
+        savedAt: new Date().toISOString(),
+        moves: g.history(),
+        myColor,
+        presetIndex,
+        notes: notes.map(({ from, label, text, category, pattern }) => ({ from, label, text, category, pattern })),
+        callsUsed,
+        gameCostUsd: gameCost,
+        mistakes: [...mistakesRef.current.entries()],
+        playerMoveCount: playerMoveCountRef.current,
+      });
+    }, 250);
+    return () => clearTimeout(timer);
+  }, [fen, notes, callsUsed, gameCost, myColor, presetIndex, isOver]);
+
   function onPieceDrop({ sourceSquare, targetSquare }: PieceDropHandlerArgs): boolean {
     if (!targetSquare || isOver || !myTurn || thinking) return false;
     let move: Move;
@@ -551,6 +656,7 @@ export default function App() {
       fenAfter: move.after,
     };
     playerMoveCountRef.current++;
+    setResumeNotice(null);
     pendingReviewRef.current = record;
     lastPlayerMoveRef.current = record;
     setFen(game.fen());
@@ -566,6 +672,7 @@ export default function App() {
       setSaveNote(null);
     }
     gameIdRef.current++;
+    setResumeNotice(null);
     setThinking(false);
     gameRef.current = new Chess();
     setResignedBy(null);
@@ -674,6 +781,14 @@ export default function App() {
         </div>
         <aside className="controls" ref={controlsRef}>
           <p className={`status${isOver ? ' over' : ''}`}>{turnText}</p>
+          {resumeNotice && (
+            <p className="resume-note">
+              {resumeNotice}
+              <button className="captured-close" onClick={() => setResumeNotice(null)} aria-label="Dismiss">
+                ×
+              </button>
+            </p>
+          )}
           {isOver && (
             <div className="review-cta">
               <button

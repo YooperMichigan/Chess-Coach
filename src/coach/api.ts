@@ -10,6 +10,7 @@ import type {
   ReviewRequest,
   SaveGameRequest,
   SaveGameResponse,
+  SavedGameState,
   UsageSummary,
 } from '../../shared/coach-types';
 import type { RatingSummary } from '../../shared/rating';
@@ -83,4 +84,23 @@ export async function fetchRating(): Promise<RatingSummary> {
   const res = await fetch('/api/rating');
   if (!res.ok) throw new Error(`Could not load your rating (server error ${res.status}).`);
   return res.json();
+}
+
+/** The auto-saved game in progress, or null if there isn't one. */
+export async function fetchCurrentGame(): Promise<SavedGameState | null> {
+  const res = await fetch('/api/current-game');
+  if (!res.ok) return null;
+  return res.json();
+}
+
+export async function saveCurrentGame(state: SavedGameState): Promise<void> {
+  await fetch('/api/current-game', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(state),
+  });
+}
+
+export async function clearCurrentGame(): Promise<void> {
+  await fetch('/api/current-game', { method: 'DELETE' });
 }

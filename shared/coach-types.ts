@@ -229,3 +229,26 @@ export interface GameReview {
   focus: string; // one thing to work on next game
   costUsd: number; // cost of this review call (0 if it was already stored)
 }
+
+// ---- Game in progress (auto-saved so you can walk away and come back) ----
+
+export interface SavedNote {
+  from: 'coach' | 'you' | 'error';
+  label: string;
+  text: string;
+  category?: MistakeCategory | null;
+  pattern?: PatternTag | null;
+}
+
+export interface SavedGameState {
+  version: 1;
+  savedAt: string; // ISO time
+  moves: string[]; // SAN from the starting position
+  myColor: 'white' | 'black';
+  presetIndex: number; // engine strength preset
+  notes: SavedNote[]; // coach panel
+  callsUsed: number;
+  gameCostUsd: number;
+  mistakes: [number, MistakeRecord][]; // ply -> mistake
+  playerMoveCount: number;
+}

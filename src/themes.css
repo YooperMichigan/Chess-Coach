@@ -72,7 +72,7 @@
   font-family: 'Archivo', system-ui, sans-serif;
   color-scheme: light;
 }
-:root[data-skin='tournament'] .app-header { border-bottom: 4px solid #111311; padding-bottom: 10px; }
+:root[data-skin='tournament'] .app-header { border-bottom: 2px solid #111311; padding-bottom: 10px; }
 :root[data-skin='tournament'] .app-header h1,
 :root[data-skin='tournament'] .status,
 :root[data-skin='tournament'] .coach-head h2,
@@ -84,18 +84,18 @@
 :root[data-skin='tournament'] .controls,
 :root[data-skin='tournament'] .opening,
 :root[data-skin='tournament'] .review,
-:root[data-skin='tournament'] .header-panel { border-radius: 0; border: 2px solid #111311; box-shadow: 6px 6px 0 #111311; }
+:root[data-skin='tournament'] .header-panel { border-radius: 0; border: 1px solid #111311; box-shadow: 3px 3px 0 rgba(17, 19, 17, 0.18); }
 :root[data-skin='tournament'] button,
 :root[data-skin='tournament'] select,
 :root[data-skin='tournament'] input,
-:root[data-skin='tournament'] textarea { border-radius: 0; border: 2px solid #111311; font-weight: 600; }
+:root[data-skin='tournament'] textarea { border-radius: 0; border: 1px solid #8e938b; font-weight: 600; }
 :root[data-skin='tournament'] button.primary,
 :root[data-skin='tournament'] button.toggle.on { background: #111311; border-color: #111311; color: #fff; }
 :root[data-skin='tournament'] .coach-note { border-left: 4px solid var(--accent); }
-:root[data-skin='tournament'] .move-list { border-radius: 0; border: 2px solid #111311; padding: 0; }
+:root[data-skin='tournament'] .move-list { border-radius: 0; border: 1px solid #111311; padding: 0; }
 :root[data-skin='tournament'] .move-list li { border-bottom: 1px solid var(--border); padding: 3px 8px; }
 :root[data-skin='tournament'] .move-list li:nth-child(odd) { background: #f6f8f4; }
-:root[data-skin='tournament'] .board-wrap .board { border: 3px solid #111311; }
+:root[data-skin='tournament'] .board-wrap .board { border: 2px solid #111311; }
 :root[data-skin='tournament'] .eval-bar { background: #111311; border-radius: 0; }
 :root[data-skin='tournament'] .eval-white { background: #ffffff; }
 
