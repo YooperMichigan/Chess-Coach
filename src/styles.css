@@ -238,26 +238,64 @@ button.primary:hover:not(:disabled) { filter: brightness(1.08); }
 .brief-ok { color: var(--accent); }
 .brief-error { color: var(--danger); }
 
-/* Rating badge */
-.app-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 16px; }
-.app-header h1 { margin: 0; }
-.rating {
-  display: grid;
-  grid-template-columns: auto auto auto;
-  align-items: baseline;
-  column-gap: 8px;
-  padding: 6px 12px;
+/* The header mirrors the two columns below it, so the top-right panel is exactly as wide as
+   the right-hand column. */
+.app-header { display: flex; align-items: center; gap: 24px; flex-wrap: wrap; margin-bottom: 16px; }
+.app-header h1 { margin: 0; color: var(--title, var(--text)); }
+.header-title { flex: 3 1 480px; max-width: 682px; min-width: 0; }
+@media (min-width: 900px) {
+  .header-title { max-width: max(360px, min(682px, calc(100vh - 286px))); }
+}
+
+/* Header panel: theme picker, rating, last games */
+.header-panel {
+  position: relative;
+  flex: 1 1 280px;
+  min-width: 280px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 16px;
+  background: var(--panel);
   border: 1px solid var(--border);
   border-radius: 8px;
-  background: var(--panel);
-  cursor: help;
 }
-.rating-label { font-size: 0.78rem; color: var(--muted); }
-.rating-value { font-size: 1.35rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+.theme-pick { flex-direction: row; align-items: center; gap: 8px; font-size: 0.8rem; color: var(--muted); }
+.theme-pick select { font-size: 0.88rem; }
+.rating-block { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; cursor: help; }
+.rating-line { display: flex; align-items: baseline; gap: 8px; }
+.rating-label { font-size: 0.8rem; color: var(--muted); }
+.rating-value { font-size: 1.4rem; font-weight: 700; font-variant-numeric: tabular-nums; }
 .rating-change { font-size: 0.85rem; font-weight: 600; font-variant-numeric: tabular-nums; }
 .rating-change.up { color: var(--accent); }
 .rating-change.down { color: var(--danger); }
-.rating-sub { grid-column: 1 / -1; font-size: 0.75rem; color: var(--muted); }
+.games-toggle { border: none; background: none; padding: 0; font-size: 0.78rem; color: var(--muted); cursor: pointer; }
+.games-toggle:hover:not(:disabled) { color: var(--text); }
+.games-list {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  left: 0;
+  z-index: 10;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.2);
+  padding: 10px 14px;
+  font-size: 0.86rem;
+}
+.games-list-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin-bottom: 6px; }
+.games-provisional { font-size: 0.75rem; color: var(--muted); }
+.games-list ol { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.games-list li { display: grid; grid-template-columns: 1.6em 3.4em 3em 1fr; align-items: baseline; gap: 6px; padding: 4px 0; border-top: 1px solid var(--border); font-variant-numeric: tabular-nums; }
+.games-list li:first-child { border-top: none; }
+.outcome { font-weight: 700; text-align: center; border-radius: 4px; font-size: 0.78rem; padding: 1px 0; }
+.outcome.win { color: #fff; background: var(--accent); }
+.outcome.loss { color: #fff; background: var(--danger); }
+.outcome.draw { color: var(--text); background: var(--border); }
+.games-after { font-weight: 600; }
+.games-meta { color: var(--muted); font-size: 0.78rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* Right-hand column: fits the window (see useFitToWindow) and scrolls inside, with the
    game status pinned to the top so it is always visible. */

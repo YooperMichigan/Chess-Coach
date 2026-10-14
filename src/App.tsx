@@ -8,7 +8,8 @@ import { EngineLine, type EngineView } from './components/EngineLine';
 import { MoveList } from './components/MoveList';
 import { CoachPanel, type CoachNote } from './components/CoachPanel';
 import { fetchRating, requestChat, requestComment, requestHint, requestReview, saveGame } from './coach/api';
-import { RatingBadge } from './components/RatingBadge';
+import { HeaderPanel } from './components/HeaderPanel';
+import { boardStyle, themeById } from './themes';
 import type { RatingSummary } from '../shared/rating';
 import { ReviewPanel, type ReviewState } from './components/ReviewPanel';
 import { OpeningPanel } from './components/OpeningPanel';
@@ -156,6 +157,13 @@ export default function App() {
   // The right-hand column fits the window on wide screens and scrolls inside.
   const controlsRef = useRef<HTMLElement>(null);
   useFitToWindow(controlsRef, ['.app-header']);
+
+  // Visual theme: CSS is scoped by <html data-skin>, board colours go to react-chessboard.
+  const [themeId, setThemeId] = useState<string>(() => loadPref('theme', 'classic'));
+  const theme = themeById(themeId);
+  useEffect(() => {
+    document.documentElement.dataset.skin = theme.id;
+  }, [theme.id]);
 
   // In-app rating, refreshed whenever a game is saved (historyKey changes).
   const [rating, setRating] = useState<RatingSummary | null>(null);
@@ -617,8 +625,17 @@ export default function App() {
   return (
     <div className="app">
       <header className="app-header">
-        <h1>Chess Coach</h1>
-        <RatingBadge rating={rating} />
+        <div className="header-title">
+          <h1>Chess Coach</h1>
+        </div>
+        <HeaderPanel
+          themeId={themeId}
+          onThemeChange={(id) => {
+            setThemeId(id);
+            savePref('theme', id);
+          }}
+          rating={rating}
+        />
       </header>
       <main>
         <div className="left-col">
@@ -628,6 +645,7 @@ export default function App() {
           <Chessboard
             options={{
               id: 'main-board',
+              ...boardStyle(theme),
               position: fen,
               boardOrientation: myColor,
               onPieceDrop,
@@ -760,7 +778,7 @@ export default function App() {
           <HistoryPanel lastN={HISTORY_LAST_N} refreshKey={historyKey} saveNote={saveNote} />
         </aside>
       </main>
-      <ReviewPanel state={review} orientation={myColor} />
+      <ReviewPanel state={review} orientation={myColor} boardOptions={boardStyle(theme)} />
     </div>
   );
 }

@@ -1,4 +1,4 @@
-import { Chessboard } from 'react-chessboard';
+import { Chessboard, type ChessboardOptions } from 'react-chessboard';
 import type { GameReview, PlayerScore } from '../../shared/coach-types';
 import { formatScore } from '../engine/format';
 import { formatUsd } from '../coach/api';
@@ -18,7 +18,15 @@ function evalText(s: PlayerScore | null): string {
 }
 
 /** The finished review: one card per critical moment, then the summary and what to work on. */
-export function ReviewPanel({ state, orientation }: { state: ReviewState; orientation: 'white' | 'black' }) {
+export function ReviewPanel({
+  state,
+  orientation,
+  boardOptions,
+}: {
+  state: ReviewState;
+  orientation: 'white' | 'black';
+  boardOptions?: ChessboardOptions; // theme colours for the small boards
+}) {
   if (state.kind === 'idle') return null;
   return (
     <section className="review" id="review" aria-label="Game review">
@@ -48,6 +56,7 @@ export function ReviewPanel({ state, orientation }: { state: ReviewState; orient
                     <div className="review-board">
                       <Chessboard
                         options={{
+                          ...boardOptions,
                           id: `review-${i}`,
                           position: m.fen,
                           boardOrientation: orientation,

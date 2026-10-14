@@ -241,17 +241,26 @@ export function setSetting(key: string, value: string) {
 }
 
 const finishedGames = db.prepare(
-  `SELECT result, my_color AS myColor, engine_elo AS engineElo, engine_label AS engineLabel
+  `SELECT id, played_at AS playedAt, result, my_color AS myColor, engine_elo AS engineElo, engine_label AS engineLabel
    FROM games WHERE result != '*' ORDER BY played_at, id`,
 );
 
 /** The player's rating, replayed from every finished game (games at unknown strengths are skipped). */
 export function playerRating(): RatingSummary {
-  const rows = finishedGames.all() as { result: RatedGame['result']; myColor: 'white' | 'black'; engineElo: number | null; engineLabel: string }[];
+  const rows = finishedGames.all() as {
+    id: number;
+    playedAt: string;
+    result: RatedGame['result'];
+    myColor: 'white' | 'black';
+    engineElo: number | null;
+    engineLabel: string;
+  }[];
   const rated: RatedGame[] = [];
   for (const r of rows) {
     const engineRating = r.engineElo ?? ENGINE_RATINGS[r.engineLabel];
-    if (engineRating) rated.push({ result: r.result, myColor: r.myColor, engineRating });
+    if (engineRating) {
+      rated.push({ id: r.id, playedAt: r.playedAt, engineLabel: r.engineLabel, result: r.result, myColor: r.myColor, engineRating });
+    }
   }
   return computeRating(rated);
 }

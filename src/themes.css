@@ -1,0 +1,105 @@
+/* Themes, scoped by <html data-skin="...">. "classic" uses the base styles in styles.css.
+   Each theme sets the colour tokens, then a few shapes and typefaces. Fonts load from Google
+   Fonts (index.html) and fall back to system fonts when offline. */
+
+/* ---------- Club Room: green felt, brass, cream panels, serif headings ---------- */
+:root[data-skin='club'] {
+  --bg: #1b2820; --panel: #f6f1e6; --text: #26221c; --muted: #6f6656; --accent: #9a7a3e;
+  --danger: #9c3b2f; --border: #d9cfba; --title: #efe4c8;
+  font-family: 'Source Sans 3', system-ui, sans-serif;
+  color-scheme: light;
+}
+:root[data-skin='club'] body { background: radial-gradient(ellipse at top, #24372c 0%, #172119 70%) fixed; }
+:root[data-skin='club'] .app-header h1,
+:root[data-skin='club'] .status,
+:root[data-skin='club'] .coach-head h2,
+:root[data-skin='club'] .opening-head h2,
+:root[data-skin='club'] .history-head h2,
+:root[data-skin='club'] .review h2,
+:root[data-skin='club'] .rating-value { font-family: 'DM Serif Display', Georgia, serif; font-weight: 400; }
+:root[data-skin='club'] .app-header h1 { font-size: 2rem; }
+:root[data-skin='club'] .app-header h1::after { content: ''; display: block; width: 56px; height: 2px; background: #b8954f; margin-top: 4px; }
+:root[data-skin='club'] .status { font-size: 1.2rem; }
+:root[data-skin='club'] .coach-head h2,
+:root[data-skin='club'] .opening-head h2,
+:root[data-skin='club'] .review h2 { font-size: 1.25rem; }
+:root[data-skin='club'] .controls,
+:root[data-skin='club'] .opening,
+:root[data-skin='club'] .review,
+:root[data-skin='club'] .header-panel { border-radius: 4px; border-color: #c9b88f; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35); }
+:root[data-skin='club'] button { border-radius: 3px; background: #fbf8f1; border-color: #cdbf9f; }
+:root[data-skin='club'] button.primary,
+:root[data-skin='club'] button.toggle.on { background: #2f4a3a; border-color: #2f4a3a; color: #fff; }
+:root[data-skin='club'] .coach-note { border-left-color: #b8954f; }
+:root[data-skin='club'] .board-wrap .board { border: 10px solid #3b2a1d; border-radius: 4px; box-shadow: 0 12px 30px rgba(0, 0, 0, 0.45); }
+:root[data-skin='club'] .eval-bar { background: #2b2118; border-radius: 2px; }
+:root[data-skin='club'] .eval-white { background: #f3ead7; }
+
+/* ---------- Night Study: low-glare dark, amber accents, mono notation ---------- */
+:root[data-skin='night'] {
+  --bg: #0f1318; --panel: #171d24; --text: #dde3ea; --muted: #8793a1; --accent: #f2a93b;
+  --danger: #ef6f5e; --border: #2a3440; --title: #f2a93b;
+  font-family: 'IBM Plex Sans', system-ui, sans-serif;
+  color-scheme: dark;
+}
+:root[data-skin='night'] .app-header h1 { font-weight: 600; font-size: 1.25rem; letter-spacing: 0.12em; text-transform: uppercase; }
+:root[data-skin='night'] .rating-value { font-family: 'IBM Plex Mono', ui-monospace, monospace; color: var(--accent); }
+:root[data-skin='night'] .engine-pv,
+:root[data-skin='night'] .move-list,
+:root[data-skin='night'] .opening-move,
+:root[data-skin='night'] .note-label,
+:root[data-skin='night'] .coach-count,
+:root[data-skin='night'] .games-list { font-family: 'IBM Plex Mono', ui-monospace, monospace; }
+:root[data-skin='night'] .controls,
+:root[data-skin='night'] .opening,
+:root[data-skin='night'] .review,
+:root[data-skin='night'] .header-panel { border-radius: 10px; }
+:root[data-skin='night'] select,
+:root[data-skin='night'] button,
+:root[data-skin='night'] input,
+:root[data-skin='night'] textarea { background: #1d252e; border-color: #2c3744; border-radius: 6px; }
+:root[data-skin='night'] button.primary,
+:root[data-skin='night'] button.toggle.on { background: var(--accent); border-color: var(--accent); color: #1a1206; }
+:root[data-skin='night'] .board-wrap .board { border-radius: 8px; overflow: hidden; box-shadow: 0 0 0 1px #26303b, 0 20px 40px rgba(0, 0, 0, 0.5); }
+:root[data-skin='night'] .eval-bar { background: #2a323c; border-radius: 6px; }
+:root[data-skin='night'] .eval-white { background: #e8edf2; }
+:root[data-skin='night'] .captured { box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6); }
+
+/* ---------- Tournament: bright hall, condensed capitals, heavy outlines, scoresheet ---------- */
+:root[data-skin='tournament'] {
+  --bg: #f3f4f1; --panel: #ffffff; --text: #111311; --muted: #5d625b; --accent: #2f7d32;
+  --danger: #c62828; --border: #d7dbd3; --title: #111311;
+  font-family: 'Archivo', system-ui, sans-serif;
+  color-scheme: light;
+}
+:root[data-skin='tournament'] .app-header { border-bottom: 4px solid #111311; padding-bottom: 10px; }
+:root[data-skin='tournament'] .app-header h1,
+:root[data-skin='tournament'] .status,
+:root[data-skin='tournament'] .coach-head h2,
+:root[data-skin='tournament'] .opening-head h2,
+:root[data-skin='tournament'] .history-head h2,
+:root[data-skin='tournament'] .review h2 { font-family: 'Archivo Narrow', 'Arial Narrow', sans-serif; font-weight: 700; text-transform: uppercase; letter-spacing: 0.03em; }
+:root[data-skin='tournament'] .app-header h1 { font-size: 2.1rem; }
+:root[data-skin='tournament'] .rating-value { font-weight: 800; }
+:root[data-skin='tournament'] .controls,
+:root[data-skin='tournament'] .opening,
+:root[data-skin='tournament'] .review,
+:root[data-skin='tournament'] .header-panel { border-radius: 0; border: 2px solid #111311; box-shadow: 6px 6px 0 #111311; }
+:root[data-skin='tournament'] button,
+:root[data-skin='tournament'] select,
+:root[data-skin='tournament'] input,
+:root[data-skin='tournament'] textarea { border-radius: 0; border: 2px solid #111311; font-weight: 600; }
+:root[data-skin='tournament'] button.primary,
+:root[data-skin='tournament'] button.toggle.on { background: #111311; border-color: #111311; color: #fff; }
+:root[data-skin='tournament'] .coach-note { border-left: 4px solid var(--accent); }
+:root[data-skin='tournament'] .move-list { border-radius: 0; border: 2px solid #111311; padding: 0; }
+:root[data-skin='tournament'] .move-list li { border-bottom: 1px solid var(--border); padding: 3px 8px; }
+:root[data-skin='tournament'] .move-list li:nth-child(odd) { background: #f6f8f4; }
+:root[data-skin='tournament'] .board-wrap .board { border: 3px solid #111311; }
+:root[data-skin='tournament'] .eval-bar { background: #111311; border-radius: 0; }
+:root[data-skin='tournament'] .eval-white { background: #ffffff; }
+
+/* ---------- Shared: keep link-style buttons plain in every theme ---------- */
+:root[data-skin] .games-toggle,
+:root[data-skin] .captured-close { background: none; border: none; box-shadow: none; padding: 0 2px; font-weight: 400; }
+:root[data-skin='tournament'] .move-list .empty { padding: 4px 8px; }
