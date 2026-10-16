@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react';
 import { Chess, type Move, type Square } from 'chess.js';
-import { Chessboard, type PieceDropHandlerArgs } from 'react-chessboard';
+import { Chessboard, type PieceDropHandlerArgs, type SquareHandlerArgs } from 'react-chessboard';
 import { StockfishEngine, type AnalysisInfo } from './engine/stockfish';
 import { pvToSan } from './engine/format';
 import { EvalBar } from './components/EvalBar';
@@ -19,6 +19,7 @@ import {
   saveGame,
 } from './coach/api';
 import { HeaderPanel } from './components/HeaderPanel';
+import { CoachUnavailableError } from './platform/types';
 import { boardStyle, themeById } from './themes';
 import type { RatingSummary } from '../shared/rating';
 import { ReviewPanel, type ReviewState } from './components/ReviewPanel';
@@ -48,11 +49,13 @@ import type {
 } from '../shared/coach-types';
 import {
   ANALYSIS_DEPTH,
+  ANALYSIS_DEPTH_OPTIONS,
   BEST_LINE_LENGTH,
   COACH,
   DEFAULT_PRESET_INDEX,
   ENGINE_MOVE_TIME_MS,
   HISTORY_LAST_N,
+  MOVE_TIME_OPTIONS,
   STRENGTH_PRESETS,
 } from './config';
 
@@ -138,6 +141,13 @@ export default function App() {
   const [engineView, setEngineView] = useState<EngineView>(() => loadPref('engineView', 'full'));
   const [showCaptured, setShowCaptured] = useState<boolean>(() => loadPref('showCaptured', false));
   const [keyMomentsOn, setKeyMomentsOn] = useState<boolean>(() => loadPref('keyMoments', COACH.keyMomentsDefaultOn));
+  // Engine speed settings (the async engine code reads them through a ref).
+  const [moveTimeMs, setMoveTimeMs] = useState<number>(() => loadPref('moveTimeMs', ENGINE_MOVE_TIME_MS));
+  const [analysisDepth, setAnalysisDepth] = useState<number>(() => loadPref('analysisDepth', ANALYSIS_DEPTH));
+  const engineSettingsRef = useRef({ moveTimeMs, analysisDepth });
+  engineSettingsRef.current = { moveTimeMs, analysisDepth };
+  // Tap-to-move: the piece you tapped, waiting for a destination tap.
+  const [selected, setSelected] = useState<Square | null>(null);
   // Async coach calls read the coach panel through this ref, so they always see the latest notes.
   const notesRef = useRef(notes);
   notesRef.current = notes;
@@ -167,6 +177,7 @@ export default function App() {
   // Auto-save of the game in progress: nothing is saved until the start-up restore has run,
   // so an empty board on load never overwrites the saved game.
   const restoredRef = useRef(false);
+  const pendingSaveRef = useRef<(() => void) | null>(null); // a save waiting on its timer
   const [resumeNotice, setResumeNotice] = useState<string | null>(null);
   const [review, setReview] = useState<ReviewState>({ kind: 'idle' });
 
@@ -225,14 +236,17 @@ export default function App() {
     if (gameRef.current.isGameOver()) return;
     const analyses = analysesRef.current;
     void analyzer
-      .analyze(fen, ANALYSIS_DEPTH, (info) => {
+      .analyze(fen, engineSettingsRef.current.analysisDepth, (info) => {
         analyses.set(fen, info);
         setAnalysis({ ...info, fen });
       })
       .then((finished) => {
         if (finished) setAnalyzedFen(fen);
       });
-  }, [fen]);
+  }, [fen, analysisDepth]);
+
+  // A new position (either side moved, or a new game) drops any tapped piece.
+  useEffect(() => setSelected(null), [fen]);
 
   const game = gameRef.current;
   const status = gameOverText(game, resignedBy);
@@ -260,7 +274,7 @@ export default function App() {
           return;
         }
       }
-      const uci = await engine.getMove(g.fen(), ENGINE_MOVE_TIME_MS);
+      const uci = await engine.getMove(g.fen(), engineSettingsRef.current.moveTimeMs);
       if (id !== gameIdRef.current || !uci) return; // game was reset meanwhile
       g.move({ from: uci.slice(0, 2), to: uci.slice(2, 4), promotion: uci[4] });
       setFen(g.fen());
@@ -319,7 +333,16 @@ export default function App() {
       setHistoryKey((k) => k + 1); // refresh the app-wide spend
     } catch (err) {
       if (id === gameIdRef.current) {
-        addNote({ from: 'error', label: errorLabel, text: err instanceof Error ? err.message : 'The coach request failed.' });
+        const text = err instanceof Error ? err.message : 'The coach request failed.';
+        if (err instanceof CoachUnavailableError) {
+          // Nothing was spent, so it doesn't count toward the per-game limit, and a repeat of the
+          // same reason (e.g. each automatic comment while offline) isn't added again.
+          callsUsedRef.current--;
+          setCallsUsed(callsUsedRef.current);
+          const last = notesRef.current.at(-1);
+          if (last?.from === 'error' && last.text === text) return true;
+        }
+        addNote({ from: 'error', label: errorLabel, text });
       }
     } finally {
       if (id === gameIdRef.current) {
@@ -496,7 +519,7 @@ export default function App() {
     const analyzer = analyzerRef.current;
     if (!analyzer) return null;
     let last: AnalysisInfo | null = null;
-    const finished = await analyzer.analyze(fenToAnalyze, ANALYSIS_DEPTH, (info) => (last = info));
+    const finished = await analyzer.analyze(fenToAnalyze, engineSettingsRef.current.analysisDepth, (info) => (last = info));
     if (!finished || !last) return null;
     analysesRef.current.set(fenToAnalyze, last);
     return last;
@@ -512,7 +535,7 @@ export default function App() {
     const candidates = await analyzePlayerMoves({
       pgnMoves: g.history(),
       myColor,
-      depth: ANALYSIS_DEPTH,
+      depth: engineSettingsRef.current.analysisDepth,
       cached: (f) => analysesRef.current.get(f),
       analyze: analyzeForReview,
       onProgress: (done, total) => id === gameIdRef.current && setReview({ kind: 'analyzing', done, total }),
@@ -615,7 +638,8 @@ export default function App() {
   // (finished games are stored in the games table) or the board is empty.
   useEffect(() => {
     if (!restoredRef.current) return;
-    const timer = setTimeout(() => {
+    const save = () => {
+      pendingSaveRef.current = null;
       const g = gameRef.current;
       if (isOver || g.history().length === 0) {
         void clearCurrentGame();
@@ -633,21 +657,55 @@ export default function App() {
         mistakes: [...mistakesRef.current.entries()],
         playerMoveCount: playerMoveCountRef.current,
       });
-    }, 250);
+    };
+    pendingSaveRef.current = save;
+    const timer = setTimeout(save, 250);
     return () => clearTimeout(timer);
   }, [fen, notes, callsUsed, gameCost, myColor, presetIndex, isOver]);
 
+  // Save at once when the app is hidden (iPad locked, app switched, tab closed): it may be
+  // suspended or closed before the timer above fires.
+  useEffect(() => {
+    const flush = () => pendingSaveRef.current?.();
+    const onVisibility = () => {
+      if (document.visibilityState === 'hidden') flush();
+    };
+    document.addEventListener('visibilitychange', onVisibility);
+    window.addEventListener('pagehide', flush);
+    return () => {
+      document.removeEventListener('visibilitychange', onVisibility);
+      window.removeEventListener('pagehide', flush);
+    };
+  }, []);
+
+  const canMove = !isOver && myTurn && !thinking;
+
   function onPieceDrop({ sourceSquare, targetSquare }: PieceDropHandlerArgs): boolean {
-    if (!targetSquare || isOver || !myTurn || thinking) return false;
+    if (!targetSquare) return false;
+    return tryMove(sourceSquare as Square, targetSquare as Square);
+  }
+
+  /** Tap a piece of yours, then tap where it should go (tap it again, or elsewhere, to cancel). */
+  function onSquareClick({ square }: SquareHandlerArgs) {
+    if (!canMove) return;
+    const sq = square as Square;
+    if (selected && selected !== sq && tryMove(selected, sq)) return;
+    const piece = game.get(sq);
+    setSelected(piece && piece.color === myColor[0] && sq !== selected ? sq : null);
+  }
+
+  /** Plays your move if it is legal (chess.js decides). Returns whether it was played. */
+  function tryMove(from: Square, to: Square): boolean {
+    if (!canMove) return false;
     let move: Move;
     try {
-      const piece = game.get(sourceSquare as Square);
-      const isPromotion =
-        piece?.type === 'p' && (targetSquare[1] === '8' || targetSquare[1] === '1');
-      move = game.move({ from: sourceSquare, to: targetSquare, promotion: isPromotion ? promotion : undefined });
+      const piece = game.get(from);
+      const isPromotion = piece?.type === 'p' && (to[1] === '8' || to[1] === '1');
+      move = game.move({ from, to, promotion: isPromotion ? promotion : undefined });
     } catch {
       return false; // illegal move — chess.js throws
     }
+    setSelected(null);
     const record: PlayerMove = {
       ply: game.history().length - 1,
       san: move.san,
@@ -729,6 +787,17 @@ export default function App() {
     resultLabel = '½-½';
   }
 
+  // Tapped piece and its legal destinations (dots; rings on captures).
+  const squareStyles: Record<string, CSSProperties> = {};
+  if (selected && canMove) {
+    squareStyles[selected] = { background: 'rgba(255, 214, 0, 0.45)' };
+    for (const m of game.moves({ square: selected, verbose: true })) {
+      squareStyles[m.to] = m.captured
+        ? { background: 'radial-gradient(circle, transparent 58%, rgba(20, 85, 30, 0.45) 60%)' }
+        : { background: 'radial-gradient(circle, rgba(20, 85, 30, 0.45) 22%, transparent 24%)' };
+    }
+  }
+
   return (
     <div className="app">
       <header className="app-header">
@@ -756,7 +825,10 @@ export default function App() {
               position: fen,
               boardOrientation: myColor,
               onPieceDrop,
-              allowDragging: !isOver && myTurn && !thinking,
+              onSquareClick,
+              onPieceDrag: () => setSelected(null),
+              squareStyles,
+              allowDragging: canMove,
               canDragPiece: ({ piece }) => piece.pieceType[0] === myColor[0],
             }}
           />
@@ -871,6 +943,44 @@ export default function App() {
               ))}
             </select>
           </label>
+
+          <div className="engine-speed">
+            <label>
+              Engine thinking time
+              <select
+                id="move-time"
+                value={moveTimeMs}
+                onChange={(e) => {
+                  setMoveTimeMs(Number(e.target.value));
+                  savePref('moveTimeMs', Number(e.target.value));
+                }}
+              >
+                {MOVE_TIME_OPTIONS.map((o) => (
+                  <option key={o.ms} value={o.ms}>
+                    {o.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              Analysis depth
+              <select
+                id="analysis-depth"
+                value={analysisDepth}
+                onChange={(e) => {
+                  setAnalysisDepth(Number(e.target.value));
+                  savePref('analysisDepth', Number(e.target.value));
+                }}
+              >
+                {ANALYSIS_DEPTH_OPTIONS.map((d) => (
+                  <option key={d} value={d}>
+                    {d}
+                    {d === ANALYSIS_DEPTH ? ' (default)' : d < ANALYSIS_DEPTH ? ' (faster)' : ' (slower)'}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
 
           <label>
             Promote pawns to

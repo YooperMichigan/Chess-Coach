@@ -24,14 +24,22 @@ export const STRENGTH_PRESETS: StrengthPreset[] = [
 
 export const DEFAULT_PRESET_INDEX = 4; // Elo 1500
 
-// How long the engine thinks before playing its move.
+// How long the engine thinks before playing its move (adjustable in the app; older iPads
+// may want less).
 export const ENGINE_MOVE_TIME_MS = 800;
+export const MOVE_TIME_OPTIONS = [
+  { label: 'Quick (0.3 s)', ms: 300 },
+  { label: 'Normal (0.8 s)', ms: 800 },
+  { label: 'Longer (2 s)', ms: 2000 },
+];
 
 // Relative to the app's base URL so the build works from any path, not just the site root.
 export const STOCKFISH_WORKER_URL = `${import.meta.env.BASE_URL}stockfish/stockfish-19-lite-single.js`;
 
-// Depth for the full-strength analysis engine (eval bar + best line). ~0.5-1s per position.
+// Depth for the full-strength analysis engine (eval bar + best line). ~0.5-1s per position
+// on a desktop. Adjustable in the app: lower is faster on older iPads, but less accurate.
 export const ANALYSIS_DEPTH = 16;
+export const ANALYSIS_DEPTH_OPTIONS = [10, 12, 14, 16, 18];
 
 // How many moves of the engine's best line to display.
 export const BEST_LINE_LENGTH = 5;

@@ -1,4 +1,4 @@
-import { PATTERN_TAGS } from '../shared/coach-types.ts';
+import { PATTERN_TAGS } from './coach-types.ts';
 import type {
   CoachChatRequest,
   CoachCommentRequest,
@@ -10,7 +10,7 @@ import type {
   PositionInfo,
   ReviewRequest,
   TranscriptEntry,
-} from '../shared/coach-types.ts';
+} from './coach-types.ts';
 
 export const MISTAKE_CATEGORIES = [
   'tactical-oversight',

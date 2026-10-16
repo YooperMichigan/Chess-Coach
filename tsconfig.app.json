@@ -14,7 +14,10 @@
     "allowImportingTsExtensions": true,
     "skipLibCheck": true,
     "noEmit": true,
-    "types": ["vite/client"]
+    "types": ["vite/client"],
+    // Resolved per build by vite.config.ts; typechecked against the web version (the iPad
+    // version must export the same createPlatform signature).
+    "paths": { "@platform-impl": ["./src/platform/server.ts"] }
   },
   "include": ["src", "shared"]
 }

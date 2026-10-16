@@ -13,3 +13,9 @@ data/
 *.db-journal
 *.log
 .DS_Store
+
+# Signing and key files (iOS)
+*.p12
+*.mobileprovision
+*.cer
+*.keystore

@@ -27,7 +27,7 @@ Claude must never be asked to evaluate a position, find a best move, or verify l
 - **Live per-move comments, hints and chat:** `claude-sonnet-5-5` (changed from Haiku 5.5 for better explanations; roughly 20x the cost, still a few cents per game)
 - **Post-game review:** `claude-opus-5-5` (changed from Sonnet 5.5 for deeper explanations)
 - Non-Haiku models are called with the server-side refusal fallback (`fallbacks: "default"`).
-- Put model IDs in a single config file so they're easy to swap. Don't hardcode them in multiple places. Haiku 5.5 uses a newer tokenizer than older Haiku models, so don't reuse old token estimates.
+- Put model IDs in a single config file so they're easy to swap (`shared/coach-config.ts`, used by the server and the iPad build). Don't hardcode them in multiple places. Haiku 5.5 uses a newer tokenizer than older Haiku models, so don't reuse old token estimates.
 
 ## Architecture
 ```
@@ -104,6 +104,7 @@ Each press escalates one level for the current position. Reset on the next move.
 4. **Chat + hint button.**
 5. **SQLite: save games and mistakes.**
 6. **Post-game review with Sonnet + recurring-weakness summary.**
+7. **Standalone iPad app (Capacitor).** See the Stage 7 section below.
 
 ## Definition of done for each stage
 - App runs with a single command (`npm run dev`)
@@ -118,6 +119,8 @@ Each press escalates one level for the current position. Reset on the next move.
 - Coach smoke test: `npm run coach:test` (server must be running; `COACH_DRY_RUN=1` on the server skips the API call)
 - Typecheck: `npm run typecheck`
 - Env: copy `.env.example` to `.env` and add `ANTHROPIC_API_KEY`
+- iPad build: `npm run ios:build` (= `VITE_MODE=ios npm run build && npx cap sync ios`), then `npm run ios:open` and Run in Xcode
+- Secret scan: `npm run check:secrets` (tracked files, git history, `dist/`, iOS bundle)
 
 ## Added after Stage 6
 - **Opening trainer:** hand-written repertoire in `src/openings/book.ts` (London as White, Dragon as Black), keyed by position so transpositions match. Every line must stay legal (chess.js) and each book move should be checked with Stockfish. Stockfish may play book replies while in book (a deterministic choice from the book, never from Claude). The opening and book status are passed to the coach as context.
@@ -127,6 +130,87 @@ Each press escalates one level for the current position. Reset on the next move.
 - **Opening context:** the coach gets the repertoire's own explanations for the last book moves and the next ones, and must teach opening ideas from that text, not from memory.
 - **Patterns:** comments and reviews tag each moment with one tag from `PATTERN_TAGS` (`shared/coach-types.ts`); tags are stored on `mistakes.pattern`, and the app's counts (saved games + this game) are passed as a "Pattern record" line. The coach may only cite counts from that line.
 - **Key-moment trigger:** castling, capturing a minor/major piece, and pawn breaks in the player's move (detected from the board, no engine judgement) trigger a comment when on (toggle in the coach panel). Priority: eval drop > missed mate > key moment > periodic.
+
+## Stage 7: Standalone iPad app (Capacitor)
+
+Do not start it until stages 1-6 work on desktop.
+
+### Goal
+Package the existing web app as a standalone iPad app using Capacitor. No Mac server required at runtime. Stockfish runs locally on the iPad, game data is stored on the device, and the app calls the Anthropic API directly.
+
+### Rule override (applies to this stage only)
+The earlier rule "API key lives on the server only" does not apply to the iPad build. In the iPad build:
+- The user (me) enters the API key on first launch. It is stored in the iOS Keychain through a Keychain-backed secure-storage Capacitor plugin.
+- The key must never appear in source files, `.env` files bundled into the app, build output, logs, or git history.
+- Ask me before choosing and installing the secure-storage plugin.
+- The web/desktop build keeps the Express proxy and server-side key. Do not remove that path.
+
+### Architecture: two modes behind interfaces
+Create two interfaces and keep both implementations working:
+- `CoachClient`: sends coach/chat/hint/review requests.
+  - `ServerCoachClient` calls the Express proxy (desktop/web).
+  - `DirectCoachClient` calls the Anthropic API from the app (iPad).
+- `GameStore`: saves games, mistakes, and pattern tags.
+  - `SqliteServerStore` uses the existing Express + SQLite backend.
+  - `DeviceStore` uses an on-device store (Capacitor SQLite plugin, e.g. `@capacitor-community/sqlite`, or IndexedDB). Keep the same schema and the same queries.
+
+Select the implementation with a build-time flag, e.g. `VITE_MODE=web` or `VITE_MODE=ios`. UI code must not know which one is active.
+
+### Direct API call requirements (DirectCoachClient)
+- POST to `https://api.anthropic.com/v1/messages`
+- Headers: `x-api-key`, `anthropic-version: 2023-06-01`, `content-type: application/json`, and `anthropic-dangerous-direct-browser-access: true`
+- Reuse the same prompts, models config, payload shape, and token-discipline rules as the server version.
+- If CORS from the Capacitor WebView causes problems, tell me and propose using Capacitor's native HTTP option. Don't work around it silently.
+- Handle errors without breaking the game: 401 (bad key), 402/credit exhausted, 429 (rate limit), and no network. Show "Coach unavailable: <short reason>" in the coach panel and let me keep playing.
+
+### API key screen
+- First launch: prompt for the key, validate it with one tiny request, then store it.
+- Settings screen: show the key masked, with "Replace key" and "Remove key" actions.
+- Never log the key, never include it in error messages, never show it in full after entry.
+
+### Capacitor setup
+1. Install `@capacitor/core`, `@capacitor/ios`, and dev dependency `@capacitor/cli`. Ask before adding any other plugin.
+2. `npx cap init` with app name "Chess Coach", a unique bundle ID (ask me for it), `webDir` set to the Vite build output (`dist`).
+3. Build with `VITE_MODE=ios`, then `npx cap add ios`.
+4. Document the loop in the README: `VITE_MODE=ios npm run build && npx cap sync`, then `npx cap open ios`.
+5. Add `ios/` build artifacts and any key files to `.gitignore` as appropriate.
+
+### iPad-specific work
+- **Stockfish:** use the single-threaded WASM build only. Multi-threaded builds need cross-origin isolation headers that the Capacitor shell does not provide. Verify the worker and `.wasm` load from bundled files, and confirm the engine plays moves.
+- **Touch:** tap-to-move (tap piece, tap destination) in addition to drag-and-drop. Highlight legal destination squares.
+- **Layout:** board fills the available space. Landscape: coach panel beside the board. Portrait: coach panel below it. Respect safe-area insets.
+- **Orientation:** support landscape and portrait.
+- **State saving:** save the game state after every move. On launch, offer to resume an unfinished game. The app can be suspended when the iPad locks or I switch apps.
+- **Offline:** the app must work offline except for coach calls. Engine, board, and saved games must work with no connection.
+- **Strength:** older iPads may be slow. Keep the engine's thinking time and strength configurable.
+
+### Manual steps for me (list these in the README, don't attempt them)
+- Create a separate API key just for this app, in its own workspace if possible, with a low spend limit.
+- Turn auto-reload off on the API account so a leaked key can only spend the prepaid balance.
+- Enable Developer Mode on the iPad, then restart it.
+- In Xcode: Signing & Capabilities, automatic signing, select my Apple ID team, select the connected iPad, press Run.
+- On the iPad: trust the developer profile under Settings, General, VPN & Device Management.
+- With a free Apple ID the install expires after about 7 days and must be re-run from Xcode. Check Apple's current terms.
+
+### Definition of done for Stage 7
+- `VITE_MODE=web` build still works exactly as before.
+- `VITE_MODE=ios` build installs and runs on the iPad with no Mac server.
+- I can play a full game, with the engine, coach comments, chat, hints, save, resume, and post-game review.
+- Airplane mode: I can still play and review saved games. The coach shows "unavailable" without errors or crashes.
+- A search of the repo and the built `dist/` folder finds no API key.
+- Short README section listing the manual steps above.
+
+### Decisions made for Stage 7
+- Secure storage: `@aparajita/capacitor-secure-storage` (Keychain, this device only, not synced). SQLite: `@capacitor-community/sqlite`. Bundle ID: `com.yoopermichigan.chesscoach`.
+- `DirectCoachClient` uses the official `@anthropic-ai/sdk` with `dangerouslyAllowBrowser: true`, which sends exactly the headers listed above. The Anthropic API answers CORS for the `capacitor://localhost` origin, so no native-HTTP workaround is used.
+- Coach logic (`shared/coach-core.ts`) and the database schema and queries (`shared/store-sql.ts`) are shared by both builds; each build supplies only the transport (server SDK client or direct client) and the SQLite driver (better-sqlite3 or the Capacitor plugin).
+- `VITE_MODE` is resolved in `vite.config.ts` by aliasing `@platform-impl` to `src/platform/server.ts` or `src/platform/device.ts`, so the web bundle contains no iPad code.
+
+### Flag to me, don't decide silently
+- Which secure-storage and SQLite plugins you propose
+- Any CORS or networking workaround
+- Any place the key could end up in logs, crash reports, or build output
+- Any performance problem running Stockfish on the iPad
 
 ## Things to flag to me, not decide silently
 - Any place where Claude's output could affect game state (it shouldn't)

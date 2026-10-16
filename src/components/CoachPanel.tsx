@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'rea
 import type { HintLevel, MistakeCategory, PatternTag } from '../../shared/coach-types';
 import { formatUsd } from '../coach/api';
 import { CoachingBrief } from './CoachingBrief';
+import { ApiKeyPanel } from './ApiKeyPanel';
 
 export interface CoachNote {
   id: number;
@@ -122,6 +123,7 @@ export function CoachPanel(p: Props) {
         Comment on key moments (castling, trades, pawn breaks)
       </label>
       <CoachingBrief />
+      <ApiKeyPanel />
     </section>
   );
 }

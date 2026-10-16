@@ -11,10 +11,17 @@
     "build": "tsc -b && vite build",
     "typecheck": "tsc -b",
     "preview": "vite preview",
-    "coach:test": "node scripts/coach-test.ts"
+    "coach:test": "node scripts/coach-test.ts",
+    "ios:build": "VITE_MODE=ios npm run build && cap sync ios",
+    "ios:open": "cap open ios",
+    "check:secrets": "node scripts/check-secrets.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.133.0",
+    "@aparajita/capacitor-secure-storage": "^8.0.1",
+    "@capacitor-community/sqlite": "^8.1.1",
+    "@capacitor/core": "^8.5.3",
+    "@capacitor/ios": "^8.5.3",
     "better-sqlite3": "^13.0.3",
     "chess.js": "^1.4.0",
     "dotenv": "^18.0.7",
@@ -25,6 +32,7 @@
     "stockfish": "^19.0.1"
   },
   "devDependencies": {
+    "@capacitor/cli": "^8.5.3",
     "@types/better-sqlite3": "^9.6.0",
     "@types/express": "^5.0.6",
     "@types/node": "^26.6.5",
