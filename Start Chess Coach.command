@@ -7,6 +7,15 @@ cd "$(dirname "$0")" || exit 1
 # Make sure Node is found whether it came from the nodejs.org installer or Homebrew.
 export PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"
 URL="http://localhost:5173"
+# Opens the app: in its own window if you added it to the Dock from Safari (File > Add to
+# Dock, saved as "Chess Coach"), otherwise in a browser tab.
+open_app() {
+  if [ -d "$HOME/Applications/Chess Coach.app" ]; then
+    open "$HOME/Applications/Chess Coach.app"
+  else
+    open "$URL"
+  fi
+}
 # Update from this branch on GitHub by name, so a missing or odd upstream setting can't break it.
 BRANCH="$(git rev-parse --abbrev-ref HEAD)"
 
@@ -15,7 +24,7 @@ BRANCH="$(git rev-parse --abbrev-ref HEAD)"
 if curl -s -o /dev/null "$URL"; then
   git fetch --quiet origin "$BRANCH" 2>/dev/null
   if [ "$(git rev-parse HEAD)" = "$(git rev-parse FETCH_HEAD 2>/dev/null || git rev-parse HEAD)" ]; then
-    open "$URL"
+    open_app
     exit 0
   fi
   echo "A newer version of Chess Coach is available. Stopping the running copy to update it..."
@@ -39,7 +48,7 @@ fi
 # Open the browser as soon as the app answers (up to a minute).
 (
   for _ in $(seq 1 60); do
-    if curl -s -o /dev/null "$URL"; then open "$URL"; break; fi
+    if curl -s -o /dev/null "$URL"; then open_app; break; fi
     sleep 1
   done
 ) &
