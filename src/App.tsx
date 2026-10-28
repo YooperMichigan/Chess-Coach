@@ -185,6 +185,18 @@ export default function App() {
   const controlsRef = useRef<HTMLElement>(null);
   useFitToWindow(controlsRef, ['.app-header']);
 
+  // The header's height (it varies by theme), so the touch layout can size the board to leave
+  // room for the opening trainer below it.
+  useEffect(() => {
+    const header = document.querySelector<HTMLElement>('.app-header');
+    if (!header) return;
+    const update = () => document.documentElement.style.setProperty('--header-h', `${header.offsetHeight}px`);
+    update();
+    const observer = new ResizeObserver(update);
+    observer.observe(header);
+    return () => observer.disconnect();
+  }, []);
+
   // Visual theme: CSS is scoped by <html data-skin>, board colours go to react-chessboard.
   const [themeId, setThemeId] = useState<string>(() => loadPref('theme', 'classic'));
   const theme = themeById(themeId);

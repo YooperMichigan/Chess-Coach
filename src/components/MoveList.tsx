@@ -7,7 +7,11 @@ interface Props {
 export function MoveList({ moves }: Props) {
   const endRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
+    // Bring the latest move into view inside its scrolling panel, but never scroll the page
+    // itself (in the stacked iPad portrait layout that would jump away from the board).
+    const { scrollX, scrollY } = window;
     endRef.current?.scrollIntoView({ block: 'nearest' });
+    if (window.scrollX !== scrollX || window.scrollY !== scrollY) window.scrollTo(scrollX, scrollY);
   }, [moves.length]);
 
   const rows: [string, string | undefined][] = [];

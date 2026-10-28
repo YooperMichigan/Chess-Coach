@@ -18,7 +18,10 @@ export function useFitToWindow(ref: RefObject<HTMLElement | null>, watch: string
         return;
       }
       const top = el.getBoundingClientRect().top + window.scrollY;
-      el.style.maxHeight = `${Math.max(minHeight, window.innerHeight - top - gap)}px`;
+      // Keep clear of the page's bottom padding too (larger on an iPad, above the home bar).
+      const app = document.querySelector('.app');
+      const bottom = app ? Math.max(gap, parseFloat(getComputedStyle(app).paddingBottom) || 0) : gap;
+      el.style.maxHeight = `${Math.max(minHeight, window.innerHeight - top - bottom)}px`;
     };
     fit();
     const observer = new ResizeObserver(fit);
