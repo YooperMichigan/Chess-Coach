@@ -141,6 +141,8 @@ export default function App() {
   const [engineView, setEngineView] = useState<EngineView>(() => loadPref('engineView', 'full'));
   const [showCaptured, setShowCaptured] = useState<boolean>(() => loadPref('showCaptured', false));
   const [keyMomentsOn, setKeyMomentsOn] = useState<boolean>(() => loadPref('keyMoments', COACH.keyMomentsDefaultOn));
+  // Hold: the coach stays quiet unless asked (no automatic comments); Ask coach, Hint and chat still work.
+  const [coachHold, setCoachHold] = useState<boolean>(() => loadPref('coachHold', false));
   // Engine speed settings (the async engine code reads them through a ref).
   const [moveTimeMs, setMoveTimeMs] = useState<number>(() => loadPref('moveTimeMs', ENGINE_MOVE_TIME_MS));
   const [analysisDepth, setAnalysisDepth] = useState<number>(() => loadPref('analysisDepth', ANALYSIS_DEPTH));
@@ -329,7 +331,8 @@ export default function App() {
     onResult: (r: T) => void,
     errorLabel: string,
   ): Promise<boolean> {
-    if (coachBusyRef.current || callsUsedRef.current >= COACH.maxCallsPerGame) return false;
+    const capped = COACH.maxCallsPerGame !== null && callsUsedRef.current >= COACH.maxCallsPerGame;
+    if (coachBusyRef.current || capped) return false;
     const id = gameIdRef.current;
     coachBusyRef.current = true;
     callsUsedRef.current++;
@@ -480,7 +483,8 @@ export default function App() {
         coachNote: null,
       });
     }
-    if (trigger) void callCoach(m, trigger, trigger === 'key-moment' ? keyMoment : null);
+    // On hold, mistakes are still recorded (from Stockfish) for the review, but the coach stays quiet.
+    if (trigger && !coachHold) void callCoach(m, trigger, trigger === 'key-moment' ? keyMoment : null);
     // Runs only when an analysis finishes; callCoach reads the latest settings from refs and state.
   }, [analyzedFen]);
 
@@ -924,6 +928,11 @@ export default function App() {
                 }}
               />
             }
+            hold={coachHold}
+            onToggleHold={(on) => {
+              setCoachHold(on);
+              savePref('coachHold', on);
+            }}
             keyMomentsOn={keyMomentsOn}
             onToggleKeyMoments={(on) => {
               setKeyMomentsOn(on);

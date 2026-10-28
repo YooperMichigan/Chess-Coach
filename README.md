@@ -31,12 +31,14 @@ After a game ends, press **Review this game**. Reviews are stored with the game,
 
 Games are saved automatically when they end (checkmate, draw or resign). A game you abandon with "New game" after making at least one move is saved as unfinished (`*`). The database is `data/chess-coach.db` (gitignored); back it up by copying that file.
 
-Coach settings (eval-drop threshold, check-in interval, per-game cap, your level) are in `src/config.ts` under `COACH`. Model IDs are in `shared/coach-config.ts`. The engine's thinking time and analysis depth can be changed in the app (right-hand column), which helps on slower machines.
+Press **Hold** (next to Captured in the coach panel) to stop the automatic comments; Ask coach, Hint and chat still answer. There is no per-game call limit any more (it can be brought back with `maxCallsPerGame` in `src/config.ts`).
+
+Coach settings (eval-drop threshold, check-in interval, optional per-game cap, your level) are in `src/config.ts` under `COACH`. Model IDs are in `shared/coach-config.ts`. The engine's thinking time and analysis depth can be changed in the app (right-hand column), which helps on slower machines.
 
 ## Status
 - [x] Stage 1: playable board vs Stockfish (legal moves, adjustable strength, new game as White/Black, resign)
 - [x] Stage 2: eval bar, move list, engine best line (separate full-strength analysis worker, depth 16)
-- [x] Stage 3: coach panel (Express + Haiku): comments on eval drops over 80cp, missed mates, every 5th move (toggle), and Ask coach; 25 calls per game cap
+- [x] Stage 3: coach panel (Express + Haiku): comments on eval drops over 80cp, missed mates, every 5th move (toggle), and Ask coach (the per-game call cap was later removed in favour of a Hold button)
 - [x] Stage 4: chat box and a three-level hint button (nudge, where to look, show move), resetting each move
 - [x] Stage 5: games and mistakes saved to SQLite (`data/chess-coach.db`), with a "Your history" panel showing the most common mistake types over the last 10 games
 - [x] Stage 6: post-game review: a Stockfish pass finds your 3-5 costliest moves (by lost winning chances), and Opus explains each one, summarises the game and your recurring weaknesses, and suggests one thing to work on
@@ -63,7 +65,7 @@ Then in Xcode press Run with the iPad selected. After any code change, run `npm 
 
 On first launch the app asks for your API key. It checks the key with one free request (it lists the models; no tokens used) and stores it in the Keychain, for this iPad only (not synced to iCloud, not restored onto another device). Under **API key** in the coach panel you can see it masked (`sk-ant-…abcd`), replace it, or remove it. You can skip the prompt and play without the coach.
 
-Without a connection (or without credit), the coach panel shows "Coach unavailable: <reason>" and you keep playing. Those failed calls don't count toward the 25 per game. Stockfish, saving, resuming, history and saved reviews all work offline.
+Without a connection (or without credit), the coach panel shows "Coach unavailable: <reason>" and you keep playing. Those failed calls aren't counted or charged. Stockfish, saving, resuming, history and saved reviews all work offline.
 
 `npm run check:secrets` searches the tracked files, the git history, `dist/` and the iOS bundle for anything that looks like an API key.
 

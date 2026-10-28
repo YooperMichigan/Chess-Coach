@@ -51,8 +51,9 @@ export const COACH = {
   // Brief strategic note every N of your moves (toggle in the coach panel).
   periodicEvery: 5,
   periodicDefaultOn: true,
-  // Hard cap on coach calls per game, to keep cost at pennies.
-  maxCallsPerGame: 25,
+  // Cap on coach calls per game, or null for no cap. The "Hold" button in the coach panel
+  // pauses the automatic comments instead.
+  maxCallsPerGame: null as number | null,
   // How many recent half-moves to send (6-10).
   recentPlies: 10,
   // Recent coach panel entries (comments, hints, chat) sent with each comment and chat

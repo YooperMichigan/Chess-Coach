@@ -17,7 +17,7 @@ interface Props {
   notes: CoachNote[];
   status: string | null; // e.g. "Coach is thinking…"
   callsUsed: number;
-  callsMax: number;
+  callsMax: number | null; // null = no limit
   gameCostUsd: number;
   canAsk: boolean;
   onAsk: () => void;
@@ -33,6 +33,8 @@ interface Props {
   showCaptured: boolean;
   onToggleCaptured: (on: boolean) => void;
   captured: ReactNode; // the captured-pieces card, shown when showCaptured is on
+  hold: boolean; // automatic comments paused
+  onToggleHold: (on: boolean) => void;
 }
 
 const HINT_LABEL: Record<HintLevel, string> = { 1: 'Hint: nudge', 2: 'Hint: where to look', 3: 'Hint: show move' };
@@ -40,7 +42,7 @@ const HINT_LABEL: Record<HintLevel, string> = { 1: 'Hint: nudge', 2: 'Hint: wher
 export function CoachPanel(p: Props) {
   const [draft, setDraft] = useState('');
   const feedRef = useRef<HTMLDivElement>(null);
-  const capped = p.callsUsed >= p.callsMax;
+  const capped = p.callsMax !== null && p.callsUsed >= p.callsMax;
 
   // Keep the newest message in view.
   useEffect(() => {
@@ -61,12 +63,18 @@ export function CoachPanel(p: Props) {
       <div className="coach-head">
         <h2>Coach</h2>
         <span className="coach-count" title="Coach calls and estimated API cost for this game">
-          {formatUsd(p.gameCostUsd)} this game · {p.callsUsed}/{p.callsMax} calls
+          {formatUsd(p.gameCostUsd)} this game · {p.callsMax === null ? p.callsUsed : `${p.callsUsed}/${p.callsMax}`} call
+          {p.callsUsed === 1 && p.callsMax === null ? '' : 's'}
+          {p.hold && ' · on hold'}
         </span>
       </div>
       <div className="coach-notes" ref={feedRef} aria-live="polite">
         {p.notes.length === 0 && !p.status && (
-          <p className="empty">The coach speaks up when a move changes the evaluation. Ask a question or press Hint any time.</p>
+          <p className="empty">
+            {p.hold
+              ? 'On hold: the coach only speaks when you ask. Ask a question or press Hint any time.'
+              : 'The coach speaks up when a move changes the evaluation. Ask a question or press Hint any time.'}
+          </p>
         )}
         {p.notes.map((n) => (
           <article key={n.id} className={`coach-note from-${n.from}`}>
@@ -111,6 +119,15 @@ export function CoachPanel(p: Props) {
           onClick={() => p.onToggleCaptured(!p.showCaptured)}
         >
           Captured
+        </button>
+        <button
+          id="hold-toggle"
+          className={`toggle${p.hold ? ' on' : ''}`}
+          aria-pressed={p.hold}
+          title="Hold: no automatic comments. Ask coach, Hint and chat still work."
+          onClick={() => p.onToggleHold(!p.hold)}
+        >
+          Hold
         </button>
         {p.showCaptured && p.captured}
       </div>

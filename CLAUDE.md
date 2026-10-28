@@ -93,7 +93,7 @@ Each press escalates one level for the current position. Reset on the next move.
 - Personal use, so cost should be pennies per game. Keep it that way.
 - Don't send the full game history on every call. Recent moves + FEN is enough for live use.
 - Debounce calls. Never fire a coach call while Stockfish is still computing.
-- Add a config cap on coach comments per game (default 25).
+- Per-game call cap: removed at my request (`COACH.maxCallsPerGame: null` in `src/config.ts`; set a number to restore it). Instead, a **Hold** toggle in the coach panel pauses automatic comments; Ask coach, Hint and chat still work.
 - Log token usage per call to the console so I can see what a game costs.
 - Remind me to set a monthly spend limit on the API account.
 
