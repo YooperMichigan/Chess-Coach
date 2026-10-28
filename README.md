@@ -10,7 +10,8 @@ Double-click **Start Chess Coach** in the project folder. It updates the app, st
 - **Question-first coaching:** the coach can ask you a question in a comment; answer in the chat box and it gives a verdict, because chat sees the recent comments and hints. It also comments on key moments (castling, trades, pawn breaks; toggle in the coach panel), tags each moment with a pattern (fork, back-rank, dragon-c-file, ...), and the history panel counts the patterns behind your mistakes.
 - **Coaching brief** (in the coach panel): tell the coach your goals and how you like to be coached. It's stored in the database and added to every coach prompt; the coach's rules still take priority.
 - **Themes** (top right): Classic, Club Room, Night Study and Tournament. Theme CSS is in `src/themes.css`; board colours are in `src/themes.ts`.
-- **Your rating** (top right, click the game count for your last 10 games): an Elo-style rating from finished games against Stockfish, starting at 1200. Skill Level settings use estimated strengths (`shared/rating.ts`). The coach is told your rating.
+- **Browse and take back** (under the move list): « ‹ › » step through earlier positions (also the arrow keys, or click a move); » returns to the game. **Take back** undoes your last move and Stockfish's reply.
+- **Your rating** (top right, click the game count for your last 10 games): an Elo-style rating from finished games against Stockfish, starting at 1200. Only rated games count: a game becomes unrated as soon as the coach is used (any comment, Ask, Hint or chat) or a move is taken back. Turn on **Hold** and play without asking for a rated game. The line under the move list says which it is. Skill Level settings use estimated strengths (`shared/rating.ts`). The coach is told your rating.
 
 ## Setup
 ```bash

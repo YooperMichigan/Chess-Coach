@@ -6,6 +6,7 @@ import { pvToSan } from './engine/format';
 import { EvalBar } from './components/EvalBar';
 import { EngineLine, type EngineView } from './components/EngineLine';
 import { MoveList } from './components/MoveList';
+import { MoveNav } from './components/MoveNav';
 import { CoachPanel, type CoachNote } from './components/CoachPanel';
 import {
   clearCurrentGame,
@@ -150,6 +151,11 @@ export default function App() {
   engineSettingsRef.current = { moveTimeMs, analysisDepth };
   // Tap-to-move: the piece you tapped, waiting for a destination tap.
   const [selected, setSelected] = useState<Square | null>(null);
+  // Browsing earlier positions: how many plies are shown, or null for the live game.
+  const [viewPly, setViewPly] = useState<number | null>(null);
+  // Moves taken back this game. Any take-back (or any coaching) makes the game unrated.
+  const [takebacks, setTakebacks] = useState(0);
+  const takebacksRef = useRef(0);
   // Async coach calls read the coach panel through this ref, so they always see the latest notes.
   const notesRef = useRef(notes);
   notesRef.current = notes;
@@ -260,7 +266,10 @@ export default function App() {
   }, [fen, analysisDepth]);
 
   // A new position (either side moved, or a new game) drops any tapped piece.
-  useEffect(() => setSelected(null), [fen]);
+  useEffect(() => {
+    setSelected(null);
+    setViewPly(null); // any move, take-back or new game returns to the live position
+  }, [fen]);
 
   const game = gameRef.current;
   const status = gameOverText(game, resignedBy);
@@ -506,6 +515,7 @@ export default function App() {
       myColor,
       mistakes: [...mistakesRef.current.values()],
       coachCostUsd: gameCostRef.current,
+      rated: takebacksRef.current === 0 && callsUsedRef.current === 0,
     };
   }
 
@@ -617,6 +627,8 @@ export default function App() {
     gameCostRef.current = saved.gameCostUsd;
     setGameCost(saved.gameCostUsd);
     mistakesRef.current = new Map(saved.mistakes);
+    takebacksRef.current = saved.takebacks ?? 0;
+    setTakebacks(takebacksRef.current);
     coachBusyRef.current = false;
     setCoachBusy(false);
     setQueuedQuestion(null);
@@ -672,12 +684,13 @@ export default function App() {
         gameCostUsd: gameCost,
         mistakes: [...mistakesRef.current.entries()],
         playerMoveCount: playerMoveCountRef.current,
+        takebacks: takebacksRef.current,
       });
     };
     pendingSaveRef.current = save;
     const timer = setTimeout(save, 250);
     return () => clearTimeout(timer);
-  }, [fen, notes, callsUsed, gameCost, myColor, presetIndex, isOver]);
+  }, [fen, notes, callsUsed, gameCost, myColor, presetIndex, isOver, takebacks]);
 
   // Save at once when the app is hidden (iPad locked, app switched, tab closed): it may be
   // suspended or closed before the timer above fires.
@@ -703,7 +716,7 @@ export default function App() {
 
   /** Tap a piece of yours, then tap where it should go (tap it again, or elsewhere, to cancel). */
   function onSquareClick({ square }: SquareHandlerArgs) {
-    if (!canMove) return;
+    if (!canMove || viewPly !== null) return;
     const sq = square as Square;
     if (selected && selected !== sq && tryMove(selected, sq)) return;
     const piece = game.get(sq);
@@ -712,7 +725,7 @@ export default function App() {
 
   /** Plays your move if it is legal (chess.js decides). Returns whether it was played. */
   function tryMove(from: Square, to: Square): boolean {
-    if (!canMove) return false;
+    if (!canMove || viewPly !== null) return false;
     let move: Move;
     try {
       const piece = game.get(from);
@@ -736,6 +749,53 @@ export default function App() {
     setFen(game.fen());
     return true;
   }
+
+  // Take back: your last move and Stockfish's reply, so it's your turn again in that position.
+  const canTakeBack =
+    !isOver && myTurn && !thinking && !coachBusy && game.history({ verbose: true }).some((m) => m.color === myColor[0]);
+
+  function takeBack() {
+    if (!canTakeBack) return;
+    const g = gameRef.current;
+    const moves = g.history({ verbose: true });
+    const lastMine = moves.map((m) => m.color).lastIndexOf(myColor === 'white' ? 'w' : 'b');
+    if (lastMine < 0) return;
+    analyzerRef.current?.stopSearch();
+    while (g.history().length > lastMine) g.undo();
+    takebacksRef.current++;
+    setTakebacks(takebacksRef.current);
+    // Forget what belonged to the taken-back moves.
+    for (const ply of [...mistakesRef.current.keys()]) if (ply >= lastMine) mistakesRef.current.delete(ply);
+    playerMoveCountRef.current = Math.max(0, playerMoveCountRef.current - 1);
+    pendingReviewRef.current = null;
+    const prev = g.history({ verbose: true });
+    const prevMine = prev.map((m) => m.color).lastIndexOf(myColor === 'white' ? 'w' : 'b');
+    lastPlayerMoveRef.current =
+      prevMine >= 0
+        ? { ply: prevMine, san: prev[prevMine].san, uci: prev[prevMine].lan, fenBefore: prev[prevMine].before, fenAfter: prev[prevMine].after }
+        : null;
+    setHints({ fen: '', texts: [] });
+    setResumeNotice(null);
+    setFen(g.fen());
+  }
+
+  // Arrow keys browse the moves (not while typing).
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const t = e.target as HTMLElement | null;
+      if (t && /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName)) return;
+      if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+      const plies = gameRef.current.history().length;
+      setViewPly((v) => {
+        const at = v ?? plies;
+        const next = e.key === 'ArrowLeft' ? Math.max(0, at - 1) : at + 1;
+        return next >= plies ? null : next;
+      });
+      e.preventDefault();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
 
   async function newGame(color: Color = myColor) {
     // An abandoned game with at least one of your moves is saved as unfinished ('*').
@@ -767,6 +827,8 @@ export default function App() {
     setReview({ kind: 'idle' });
     gameCostRef.current = 0;
     setGameCost(0);
+    takebacksRef.current = 0;
+    setTakebacks(0);
     // Queue the engine reset first (it runs before any later search), then show the new
     // board right away so the status and the board never disagree.
     const engineReset = engineRef.current?.newGame();
@@ -787,12 +849,19 @@ export default function App() {
   else if (myTurn) turnText = game.inCheck() ? 'Your move — you are in check.' : 'Your move.';
   else turnText = 'Stockfish is thinking…';
 
+  // Browsing shows an earlier position (read-only), with the analysis made of it during the game.
+  const verboseHistory = game.history({ verbose: true });
+  const shownFen =
+    viewPly === null ? fen : viewPly === 0 ? (verboseHistory[0]?.before ?? fen) : verboseHistory[viewPly - 1].after;
+  const browsedAnalysis = viewPly === null ? null : analysesRef.current.get(shownFen) ?? null;
   // Only show analysis that belongs to the position on the board.
-  const current = analysis?.fen === fen ? analysis : null;
+  const current = viewPly !== null ? browsedAnalysis : analysis?.fen === fen ? analysis : null;
   // Once the game ends, the bar shows the result instead of an engine score.
   let barScore = current?.score ?? null;
   let resultLabel: string | null = null;
-  if (resignedBy) {
+  if (viewPly !== null) {
+    // keep the browsed position's score
+  } else if (resignedBy) {
     barScore = { mate: resignedBy === 'white' ? -1 : 1 };
     resultLabel = resignedBy === 'white' ? '0-1' : '1-0';
   } else if (game.isCheckmate()) {
@@ -805,7 +874,7 @@ export default function App() {
 
   // Tapped piece and its legal destinations (dots; rings on captures).
   const squareStyles: Record<string, CSSProperties> = {};
-  if (selected && canMove) {
+  if (selected && canMove && viewPly === null) {
     squareStyles[selected] = { background: 'rgba(255, 214, 0, 0.45)' };
     for (const m of game.moves({ square: selected, verbose: true })) {
       squareStyles[m.to] = m.captured
@@ -838,13 +907,13 @@ export default function App() {
             options={{
               id: 'main-board',
               ...boardStyle(theme),
-              position: fen,
+              position: shownFen,
               boardOrientation: myColor,
               onPieceDrop,
               onSquareClick,
               onPieceDrag: () => setSelected(null),
               squareStyles,
-              allowDragging: canMove,
+              allowDragging: canMove && viewPly === null,
               canDragPiece: ({ piece }) => piece.pieceType[0] === myColor[0],
             }}
           />
@@ -943,8 +1012,8 @@ export default function App() {
           <EngineLine
             score={current?.score ?? null}
             depth={current?.depth ?? 0}
-            line={current ? pvToSan(fen, current.pv, BEST_LINE_LENGTH) : ''}
-            gameOver={isOver ? 'Game over.' : null}
+            line={current ? pvToSan(shownFen, current.pv, BEST_LINE_LENGTH) : ''}
+            gameOver={isOver && viewPly === null ? 'Game over.' : null}
             view={engineView}
             onViewChange={(v) => {
               setEngineView(v);
@@ -952,7 +1021,22 @@ export default function App() {
             }}
           />
 
-          <MoveList moves={game.history()} />
+          <MoveList moves={game.history()} viewPly={viewPly} onSelect={(ply) => setViewPly(ply >= game.history().length ? null : ply)} />
+          <MoveNav
+            sans={game.history()}
+            viewPly={viewPly}
+            onView={setViewPly}
+            canTakeBack={canTakeBack && viewPly === null}
+            onTakeBack={takeBack}
+            rated={takebacks === 0 && callsUsed === 0}
+            unratedReason={
+              takebacks > 0 && callsUsed > 0
+                ? 'coach used and a move taken back'
+                : takebacks > 0
+                  ? 'a move was taken back'
+                  : 'the coach was used (turn on Hold and avoid Ask, Hint and chat for a rated game)'
+            }
+          />
 
           <label>
             Engine strength

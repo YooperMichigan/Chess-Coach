@@ -166,6 +166,7 @@ export interface SaveGameRequest {
   myColor: 'white' | 'black';
   mistakes: MistakeRecord[];
   coachCostUsd: number; // estimated Claude API cost of this game's coach calls
+  rated: boolean; // false if the coach was used or a move was taken back; unrated games don't change the rating
 }
 
 export interface SaveGameResponse {
@@ -251,4 +252,5 @@ export interface SavedGameState {
   gameCostUsd: number;
   mistakes: [number, MistakeRecord][]; // ply -> mistake
   playerMoveCount: number;
+  takebacks?: number; // moves taken back this game (any makes it unrated)
 }

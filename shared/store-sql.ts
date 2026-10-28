@@ -75,7 +75,7 @@ export function scoreToCp(s: PlayerScore | null): number | null {
   return Math.sign(s.mate) * (10_000 - Math.abs(s.mate));
 }
 
-const INSERT_GAME = `INSERT INTO games (pgn, result, engine_elo, engine_label, my_color, coach_cost_usd) VALUES (?, ?, ?, ?, ?, ?)`;
+const INSERT_GAME = `INSERT INTO games (pgn, result, engine_elo, engine_label, my_color, coach_cost_usd, rated) VALUES (?, ?, ?, ?, ?, ?, ?)`;
 const INSERT_MISTAKE = `INSERT INTO mistakes (game_id, move_number, fen, my_move, best_move, eval_before, eval_after, category, pattern, coach_note)
    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
 const RECENT_GAME_IDS = `SELECT id FROM games ORDER BY played_at DESC, id DESC LIMIT ?`;
@@ -137,6 +137,11 @@ export class SqlGameStore {
     if (!gameColumns.some((c) => c.name === 'review_json')) {
       await this.db.exec(`ALTER TABLE games ADD COLUMN review_json TEXT`);
     }
+    // Games played with the coach's help or with take-backs are kept but don't count toward
+    // the rating. Games saved before this column existed count, as they did then.
+    if (!gameColumns.some((c) => c.name === 'rated')) {
+      await this.db.exec(`ALTER TABLE games ADD COLUMN rated INTEGER NOT NULL DEFAULT 1`);
+    }
   }
 
   /** Saves a game and its mistakes in one transaction. Returns the new game id. */
@@ -150,6 +155,7 @@ export class SqlGameStore {
           g.engineLabel,
           g.myColor,
           g.coachCostUsd,
+          g.rated ? 1 : 0,
         ]);
         for (const m of g.mistakes) {
           await this.db.run(INSERT_MISTAKE, [
@@ -320,7 +326,7 @@ export class SqlGameStore {
     return this.setSetting(CURRENT_GAME_KEY, '');
   }
 
-  /** The player's rating, replayed from every finished game (games at unknown strengths are skipped). */
+  /** The player's rating, replayed from every finished rated game (games at unknown strengths are skipped). */
   playerRating(): Promise<RatingSummary> {
     return this.serial(async () => {
       const rows = await this.db.all<{
@@ -332,7 +338,7 @@ export class SqlGameStore {
         engineLabel: string;
       }>(
         `SELECT id, played_at AS playedAt, result, my_color AS myColor, engine_elo AS engineElo, engine_label AS engineLabel
-         FROM games WHERE result != '*' ORDER BY played_at, id`,
+         FROM games WHERE result != '*' AND rated = 1 ORDER BY played_at, id`,
       );
       const rated: RatedGame[] = [];
       for (const r of rows) {
