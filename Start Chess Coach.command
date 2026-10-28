@@ -7,12 +7,14 @@ cd "$(dirname "$0")" || exit 1
 # Make sure Node is found whether it came from the nodejs.org installer or Homebrew.
 export PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"
 URL="http://localhost:5173"
+# Update from this branch on GitHub by name, so a missing or odd upstream setting can't break it.
+BRANCH="$(git rev-parse --abbrev-ref HEAD)"
 
 # Already running? Open it, unless a newer version is waiting: then stop the running
 # copy so it can be updated and restarted below.
 if curl -s -o /dev/null "$URL"; then
-  git fetch --quiet 2>/dev/null
-  if [ "$(git rev-parse HEAD)" = "$(git rev-parse '@{u}' 2>/dev/null || git rev-parse HEAD)" ]; then
+  git fetch --quiet origin "$BRANCH" 2>/dev/null
+  if [ "$(git rev-parse HEAD)" = "$(git rev-parse FETCH_HEAD 2>/dev/null || git rev-parse HEAD)" ]; then
     open "$URL"
     exit 0
   fi
@@ -26,7 +28,7 @@ fi
 
 echo "Updating Chess Coach..."
 git checkout -- package-lock.json 2>/dev/null
-git pull --ff-only || echo "(Could not check for updates; starting the version you have.)"
+git pull --ff-only origin "$BRANCH" || echo "(Could not check for updates; starting the version you have.)"
 if ! npm install --no-audit --no-fund; then
   echo
   echo "Installing the app's libraries failed (see above). Press any key to close."
