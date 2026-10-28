@@ -390,10 +390,21 @@ button.toggle.on { background: var(--accent); border-color: var(--accent); color
    and the opening trainer (at least 180px) all fit on screen; each panel scrolls inside. */
 @media (pointer: coarse) and (orientation: landscape) and (min-width: 900px) {
   .left-col, .header-title {
+    flex: 1 1 480px;
     max-width: max(360px, calc(100vh - max(16px, env(safe-area-inset-top)) - max(16px, env(safe-area-inset-bottom))
-      - var(--header-h, 92px) - 16px - 16px - 180px + 42px));
+      - var(--header-h, 92px) - 10px - 16px - 140px + 42px));
   }
   .board { width: 100%; }
+  /* A narrower right-hand column (it scrolls inside); any spare width is split evenly at the
+     sides, since the board is limited by the screen height. */
+  .controls, .header-panel { flex: 1 1 360px; min-width: 320px; max-width: 420px; }
+  main, .app-header { justify-content: center; }
+  /* A slimmer header: smaller title, compact theme/rating panel. */
+  .app-header { margin-bottom: 10px; }
+  html:root .app-header h1, html:root[data-skin] .app-header h1 { font-size: 1.45rem; }
+  .header-panel { padding: 6px 12px; }
+  .header-panel select, .header-panel button { min-height: 32px; padding-top: 2px; padding-bottom: 2px; }
+  .rating-value { font-size: 1.2rem; }
 }
 /* Content scrolling up never runs under the clock and battery. */
 @media (pointer: coarse) {

@@ -27,7 +27,7 @@ export function OpeningPanel({ openingId, onChange, myColor, history, fen, follo
   const listRef = useRef<HTMLOListElement>(null);
 
   // On wide screens the box fills the space left below the board and scrolls inside.
-  useFitToWindow(sectionRef, ['.board-wrap', '.app-header']);
+  useFitToWindow(sectionRef, ['.board-wrap', '.app-header'], 140);
 
   // Keep the latest move in view: scroll the box (never the page) so it sits near the top.
   useEffect(() => {
