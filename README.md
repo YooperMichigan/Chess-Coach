@@ -28,7 +28,7 @@ Other commands:
 
 The coach panel shows the estimated API cost of the current game, and the history panel shows the total spent in the app and this month. Every Claude call is recorded in the `api_usage` table. Costs are estimates from token counts and the prices in `shared/coach-config.ts`; the Claude Console shows what you are actually billed.
 
-After a game ends, press **Review this game**. Reviews are stored with the game, so opening one again costs nothing. A review costs roughly 5-10 cents (Opus 5.5). Live comments, hints and chat use Sonnet 5.5, a few cents per game.
+After a game ends, press **Review this game**. Reviews are stored with the game, so opening one again costs nothing. Everything (live comments, hints, chat and the review) uses Opus 5.5 at medium effort. A review costs roughly 5-10 cents; live coaching costs a few cents per call, so a fully coached game can run to tens of cents. The coach panel shows the running cost.
 
 Games are saved automatically when they end (checkmate, draw or resign). A game you abandon with "New game" after making at least one move is saved as unfinished (`*`). The database is `data/chess-coach.db` (gitignored); back it up by copying that file.
 

@@ -2,8 +2,8 @@
 // app alike. Swap models here.
 
 export const MODELS = {
-  live: 'claude-sonnet-5-5', // per-move comments and hints
-  chat: 'claude-sonnet-5-5', // answers to your chat questions
+  live: 'claude-opus-5-5', // per-move comments and hints
+  chat: 'claude-opus-5-5', // answers to your chat questions
   review: 'claude-opus-5-5', // post-game review
 } as const;
 
@@ -14,16 +14,17 @@ export function usesRefusalFallback(model: string): boolean {
   return !model.startsWith('claude-haiku');
 }
 
-// Live comments are 1-3 sentences. The caps leave room for adaptive thinking, which counts
-// toward max_tokens.
-export const COMMENT_MAX_TOKENS = 2000;
-export const COMMENT_EFFORT = 'low' as const;
+// Everything runs on Opus 5.5 at medium effort (more careful than Sonnet at low effort, at
+// several times the cost). Answers are short, but thinking counts toward max_tokens, so the
+// caps leave plenty of room for it.
+export const COMMENT_MAX_TOKENS = 8000;
+export const COMMENT_EFFORT = 'medium' as const;
 
-// Chat answers are 1-4 sentences; the cap leaves room for Sonnet's adaptive thinking.
-export const CHAT_MAX_TOKENS = 4000;
-export const CHAT_EFFORT = 'low' as const;
-export const HINT_MAX_TOKENS = 2000;
-export const LIVE_EFFORT = 'low' as const; // hints
+// Chat answers are 1-4 sentences (up to 6 for a verdict).
+export const CHAT_MAX_TOKENS = 8000;
+export const CHAT_EFFORT = 'medium' as const;
+export const HINT_MAX_TOKENS = 8000;
+export const LIVE_EFFORT = 'medium' as const; // hints
 
 // Post-game review (Opus). Medium effort keeps a review to roughly 5-10 cents.
 export const REVIEW_MAX_TOKENS = 8000;
