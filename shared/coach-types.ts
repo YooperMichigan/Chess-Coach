@@ -61,6 +61,7 @@ export interface EngineEval {
 export interface CoachCommentRequest {
   trigger: CoachTrigger;
   fen: string; // position after the player's move
+  fenBefore?: string; // position before it (lets the app spell out the move and the engine's line)
   myColor: 'white' | 'black';
   recentMoves: string; // last 6-10 moves, numbered SAN
   myMove: string; // SAN

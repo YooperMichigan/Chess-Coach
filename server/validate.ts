@@ -65,6 +65,7 @@ export function parseCommentRequest(body: unknown): CoachCommentRequest {
   return {
     trigger: b.trigger as CoachCommentRequest['trigger'],
     fen: str(b.fen, 100, 'fen'),
+    fenBefore: b.fenBefore === undefined ? undefined : str(b.fenBefore, 100, 'fenBefore'),
     myColor: b.myColor,
     recentMoves: str(b.recentMoves, 300, 'recentMoves'),
     myMove: str(b.myMove, 10, 'myMove'),

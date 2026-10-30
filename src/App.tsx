@@ -761,7 +761,14 @@ export default function App() {
     const lastMine = moves.map((m) => m.color).lastIndexOf(myColor === 'white' ? 'w' : 'b');
     if (lastMine < 0) return;
     analyzerRef.current?.stopSearch();
+    const undone = moves.slice(lastMine).map((m) => m.san);
     while (g.history().length > lastMine) g.undo();
+    // Recorded in the coach panel, so the coach (which reads the panel) knows those moves are gone.
+    addNote({
+      from: 'you',
+      label: 'Take back',
+      text: `I took back ${undone[0]}${undone.length > 1 ? ` (and Stockfish's reply ${undone.slice(1).join(' ')})` : ''}.`,
+    });
     takebacksRef.current++;
     setTakebacks(takebacksRef.current);
     // Forget what belonged to the taken-back moves.

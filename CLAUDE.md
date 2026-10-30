@@ -56,6 +56,8 @@ Per call, send only what's needed:
 
 Never ask Claude to calculate. If data is missing, say so rather than guessing.
 
+Board facts: the coach must not decode the FEN itself (models misplace pieces that way). Every prompt includes `describeBoard` output from `shared/board-facts.ts` (each piece's square, material, side to move, attacked pieces with attackers and defenders, all from chess.js), and engine lines are spelled out move by move (`describeLine`). The prompts tell the coach to use only these for any statement about piece locations.
+
 ## Coach behavior (system prompt requirements)
 - Act like a coach sitting next to me, not a commentator. Be brief: 1-3 sentences for live comments.
 - **Coach, don't solve.** Default to nudges ("What does your opponent's last move threaten?"). Do not name the best move unless I press the hint button's final level or ask directly.

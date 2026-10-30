@@ -61,6 +61,7 @@ export function buildCoachRequest(m: PlayerMove, trigger: CoachTrigger, ctx: Req
   return {
     trigger,
     fen: m.fenAfter,
+    fenBefore: m.fenBefore,
     myColor: ctx.myColor,
     recentMoves: recent(ctx.history.slice(0, m.ply + 1), ctx.recentPlies),
     myMove: m.san,

@@ -1,4 +1,5 @@
 import { PATTERN_TAGS } from './coach-types.ts';
+import { describeBoard, describeLine, describeMoveFrom, fenAfter } from './board-facts.ts';
 import type {
   CoachChatRequest,
   CoachCommentRequest,
@@ -24,6 +25,9 @@ export const MISTAKE_CATEGORIES = [
 const PATTERN_LIST = PATTERN_TAGS.join(', ');
 
 // How to use the opening, transcript and pattern-record lines the app adds to messages.
+// Language models misread FENs, so the app spells the board out and the coach must use that.
+const BOARD_RULES = `Where pieces are: each message has "Board facts" listing every piece's square, the material, and which pieces are attacked and defended, and the engine lines are spelled out move by move (which piece moves from where to where, what it captures). The app computed these from the actual position. Use only these for any statement about where a piece stands, what it attacks or defends, or what a move does. Never work out piece positions from the FEN yourself, and never mention a piece, square, threat or capture that the board facts or the spelled-out lines do not show. If you are unsure, talk about the idea rather than naming squares.`;
+
 const CONTEXT_RULES = `Context the app may add to a message:
 - "Opening practice": the student is drilling this opening, with the app's prepared repertoire and the ideas behind nearby book moves. Explain opening ideas from that text rather than from memory, and make no move-order claims it does not contain.
 - "Recent coaching": what you and the student said earlier this game, oldest first. Don't repeat yourself. If your last message asked the student a question, their next message is their answer.
@@ -32,6 +36,8 @@ const CONTEXT_RULES = `Context the app may add to a message:
 export const COACH_SYSTEM = `You are a chess coach sitting next to a student who is playing a game against the Stockfish engine. You speak to the student directly, as "you".
 
 All chess facts come from Stockfish and are given to you in each message: evaluations, best moves and lines. Use only that data for any claim about evaluations or moves. Do not calculate variations yourself, do not invent lines, and do not judge a position beyond what the data supports. If a needed piece of engine data is missing, say so plainly instead of guessing.
+
+${BOARD_RULES}
 
 How to coach:
 - Be brief: 1-3 sentences.
@@ -103,13 +109,14 @@ export function buildCommentPrompt(r: CoachCommentRequest, record: string | null
     `Why you are being asked: ${TRIGGER_TEXT[r.trigger]}.`,
     `Student plays: ${r.myColor}. Student level: ${r.playerLevel}. Engine opponent strength: ${r.engineStrength}.`,
     `Recent moves: ${r.recentMoves || '(none)'}`,
-    `Student's last move: ${r.myMove}`,
+    `Student's last move: ${r.fenBefore ? describeMoveFrom(r.fenBefore, r.myMove) : r.myMove}`,
     `Was it the engine's top choice? ${top}`,
     `Evaluation before the move: ${formatEval(r.evalBefore)}`,
     `Evaluation after the move: ${formatEval(r.evalAfter)}`,
-    `Engine best line before the move: ${r.bestLineBefore || 'missing'}`,
-    `Engine best line after the move (opponent's best play): ${r.bestLineAfter || 'missing'}`,
-    `Position now (FEN): ${r.fen}`,
+    `Engine best line before the move: ${r.bestLineBefore ? (r.fenBefore ? describeLine(r.fenBefore, r.bestLineBefore) : r.bestLineBefore) : 'missing'}`,
+    `Engine best line after the move (opponent's best play): ${r.bestLineAfter ? describeLine(r.fen, r.bestLineAfter) : 'missing'}`,
+    `Position now (FEN, for reference only): ${r.fen}`,
+    ...describeBoard(r.fen, r.myColor),
     ...(r.keyMoment ? [`Key moment: ${r.keyMoment}`] : []),
     ...(r.opening ? [`Opening practice: ${r.opening}`] : []),
     ...(record ? [record] : []),
@@ -119,6 +126,8 @@ export function buildCommentPrompt(r: CoachCommentRequest, record: string | null
 
 // Shared ground rules for every coach call: Stockfish supplies the chess, Claude explains it.
 const GROUND_RULES = `All chess facts come from Stockfish and are given to you in each message: evaluations, best moves and lines. Use only that data for any claim about evaluations or moves. Do not calculate variations yourself, do not invent lines, and do not judge a position beyond what the data supports. If a needed piece of engine data is missing, say so plainly instead of guessing.
+
+${BOARD_RULES}
 
 Evaluations are from the student's point of view, in pawns: +1.00 means the student is a pawn better. "M3" means the student can force mate in 3; "-M3" means the opponent can.
 
@@ -160,9 +169,10 @@ function formatPosition(p: PositionInfo): string[] {
     `Recent moves: ${p.recentMoves || '(none yet)'}`,
     toMove,
     `Current evaluation: ${formatEval(p.eval)}`,
-    `Engine best move for the side to move: ${p.bestMove ?? 'missing'}`,
-    `Engine best line: ${p.bestLine || 'missing'}`,
-    `Position (FEN): ${p.fen}`,
+    `Engine best move for the side to move: ${p.bestMove ? describeMoveFrom(p.fen, p.bestMove) : 'missing'}`,
+    `Engine best line: ${p.bestLine ? describeLine(p.fen, p.bestLine) : 'missing'}`,
+    `Position (FEN, for reference only): ${p.fen}`,
+    ...describeBoard(p.fen, p.myColor),
     ...(p.opening ? [`Opening practice: ${p.opening}`] : []),
   ];
 }
@@ -252,11 +262,12 @@ export function buildReviewPrompt(r: ReviewRequest, history: MistakeSummary): st
     r.moments.forEach((m, i) => {
       lines.push(
         '',
-        `Moment ${i}: move ${m.moveNumber}, the student played ${m.myMove}.`,
-        `  Position before the move (FEN): ${m.fen}`,
+        `Moment ${i}: move ${m.moveNumber}, the student played ${describeMoveFrom(m.fen, m.myMove)}.`,
+        `  Position before the move (FEN, for reference only): ${m.fen}`,
+        ...describeBoard(m.fen, r.myColor).map((l) => `  ${l}`),
         `  Evaluation before: ${formatScore(m.evalBefore)}. After: ${formatScore(m.evalAfter)}.`,
-        `  Stockfish's best move: ${m.bestMove ?? 'missing'}. Best line: ${m.bestLine || 'missing'}`,
-        `  Stockfish's line after the student's move: ${m.replyLine || 'missing'}`,
+        `  Stockfish's best move: ${m.bestMove ? describeMoveFrom(m.fen, m.bestMove) : 'missing'}. Best line: ${m.bestLine ? describeLine(m.fen, m.bestLine) : 'missing'}`,
+        `  Stockfish's line after the student's move: ${m.replyLine ? describeLine(fenAfter(m.fen, m.myMove) ?? m.fen, m.replyLine) : 'missing'}`,
       );
     });
   }
