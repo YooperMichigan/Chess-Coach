@@ -435,3 +435,17 @@ button.toggle.on { background: var(--accent); border-color: var(--accent); color
 .move-nav-buttons .take-back { margin-left: auto; }
 .rated-note { margin: 0; font-size: 0.78rem; color: var(--muted); }
 .rated-note.rated { color: var(--accent); }
+
+/* Chess clock, in the status bar at the top of the right-hand column */
+.controls .status { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.clocks { display: flex; gap: 6px; font-weight: 600; }
+.clock {
+  font-variant-numeric: tabular-nums; font-size: 1rem; padding: 3px 9px; border-radius: 6px;
+  border: 1px solid var(--border); background: transparent; color: var(--text); white-space: nowrap;
+}
+.clock-who { font-size: 0.72rem; font-weight: 500; color: var(--muted); margin-right: 2px; }
+.clock.running { background: var(--accent); border-color: var(--accent); color: #fff; }
+.clock.running .clock-who { color: rgba(255, 255, 255, 0.8); }
+.clock.low { color: var(--danger); }
+.clock.running.low { background: var(--danger); border-color: var(--danger); color: #fff; }
+.muted-note { font-size: 0.78rem; color: var(--muted); }

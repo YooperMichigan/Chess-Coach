@@ -58,7 +58,10 @@ import {
   HISTORY_LAST_N,
   MOVE_TIME_OPTIONS,
   STRENGTH_PRESETS,
+  TIME_CONTROLS,
+  timeControlById,
 } from './config';
+import { formatClock, useChessClock } from './game/useChessClock';
 
 type Color = 'white' | 'black';
 type OpeningChoice = Record<Color, string | null>;
@@ -93,15 +96,28 @@ const TRIGGER_LABEL: Record<CoachTrigger, string> = {
   'key-moment': 'Key moment',
 };
 
-function resultCode(game: Chess, resignedBy: Color | null): GameResult {
+/** Whether `side` has enough material left to ever deliver mate (for a loss on time). */
+function canMate(game: Chess, side: Color): boolean {
+  const c = side === 'white' ? 'w' : 'b';
+  const mine = game.board().flat().filter((p) => p && p.color === c && p.type !== 'k');
+  return mine.some((p) => p!.type === 'p' || p!.type === 'r' || p!.type === 'q') || mine.length >= 2;
+}
+const opposite = (c: Color): Color => (c === 'white' ? 'black' : 'white');
+
+function resultCode(game: Chess, resignedBy: Color | null, flaggedBy: Color | null = null): GameResult {
   if (resignedBy) return resignedBy === 'white' ? '0-1' : '1-0';
+  if (flaggedBy) return !canMate(game, opposite(flaggedBy)) ? '1/2-1/2' : flaggedBy === 'white' ? '0-1' : '1-0';
   if (game.isCheckmate()) return game.turn() === 'w' ? '0-1' : '1-0';
   if (game.isDraw()) return '1/2-1/2';
   return '*';
 }
 
-function gameOverText(game: Chess, resignedBy: Color | null): string | null {
+function gameOverText(game: Chess, resignedBy: Color | null, flaggedBy: Color | null = null): string | null {
   if (resignedBy) return `${resignedBy === 'white' ? 'White' : 'Black'} resigned.`;
+  if (flaggedBy) {
+    const who = flaggedBy === 'white' ? 'White' : 'Black';
+    return canMate(game, opposite(flaggedBy)) ? `${who} lost on time.` : `${who} ran out of time, but the other side cannot mate: draw.`;
+  }
   if (game.isCheckmate()) return `Checkmate. ${game.turn() === 'w' ? 'Black' : 'White'} wins.`;
   if (game.isStalemate()) return 'Draw by stalemate.';
   if (game.isThreefoldRepetition()) return 'Draw by threefold repetition.';
@@ -126,6 +142,10 @@ export default function App() {
   const [promotion, setPromotion] = useState<PromotionPiece>('q');
   const [thinking, setThinking] = useState(false);
   const [resignedBy, setResignedBy] = useState<Color | null>(null);
+  // Chess clock: the time control chosen for new games, the current game's, and who ran out.
+  const [timeControlPref, setTimeControlPref] = useState<string>(() => loadPref('timeControl', 'none'));
+  const [gameControlId, setGameControlId] = useState<string>(timeControlPref);
+  const [flaggedBy, setFlaggedBy] = useState<Color | null>(null);
   const [engineReady, setEngineReady] = useState(false);
   const [analysis, setAnalysis] = useState<(AnalysisInfo & { fen: string }) | null>(null);
   // Deepest analysis seen per position, and the last position whose analysis finished.
@@ -272,9 +292,22 @@ export default function App() {
   }, [fen]);
 
   const game = gameRef.current;
-  const status = gameOverText(game, resignedBy);
+  const status = gameOverText(game, resignedBy, flaggedBy);
   const isOver = status !== null;
   const myTurn = game.turn() === myColor[0];
+
+  const flaggedRef = useRef(false); // read by the async engine move, which must not move after a flag
+  const clock = useChessClock({
+    control: timeControlById(gameControlId),
+    plies: game.history().length,
+    turn: game.turn(),
+    live: engineReady && !isOver,
+    onFlag: (side) => {
+      flaggedRef.current = true;
+      engineRef.current?.stopSearch();
+      setFlaggedBy(side === 'w' ? 'white' : 'black');
+    },
+  });
 
   const engineMove = useCallback(async () => {
     const engine = engineRef.current;
@@ -291,14 +324,14 @@ export default function App() {
         const reply = pickBookReply(bookFor(opening.id).get(positionKey(g.fen())) ?? []);
         if (reply) {
           await new Promise((r) => setTimeout(r, BOOK_REPLY_DELAY_MS));
-          if (id !== gameIdRef.current) return;
+          if (id !== gameIdRef.current || flaggedRef.current) return;
           g.move(reply.san);
           setFen(g.fen());
           return;
         }
       }
       const uci = await engine.getMove(g.fen(), engineSettingsRef.current.moveTimeMs);
-      if (id !== gameIdRef.current || !uci) return; // game was reset meanwhile
+      if (id !== gameIdRef.current || !uci || flaggedRef.current) return; // game reset or time ran out meanwhile
       g.move({ from: uci.slice(0, 2), to: uci.slice(2, 4), promotion: uci[4] });
       setFen(g.fen());
     } finally {
@@ -536,7 +569,7 @@ export default function App() {
   useEffect(() => {
     if (!isOver || coachBusy || savedGameRef.current === gameIdRef.current) return;
     savedGameRef.current = gameIdRef.current;
-    void persistGame(gameRecord(resultCode(gameRef.current, resignedBy)));
+    void persistGame(gameRecord(resultCode(gameRef.current, resignedBy, flaggedBy)));
     // gameRecord reads the finished game from refs and current settings.
   }, [isOver, coachBusy]);
 
@@ -577,9 +610,9 @@ export default function App() {
     try {
       const result = await requestReview({
         gameId: savedGameId,
-        pgn: gameRecord(resultCode(g, resignedBy)).pgn,
+        pgn: gameRecord(resultCode(g, resignedBy, flaggedBy)).pgn,
         myColor,
-        result: resultCode(g, resignedBy),
+        result: resultCode(g, resignedBy, flaggedBy),
         engineStrength: STRENGTH_PRESETS[presetIndex].label,
         playerLevel,
         opening: openingContext(openingById(openingChoice[myColor]), g.history(), myColor),
@@ -610,6 +643,12 @@ export default function App() {
     gameRef.current = g;
     setThinking(false);
     setResignedBy(null);
+    setFlaggedBy(null);
+    flaggedRef.current = false;
+    const savedControl = saved.clock && timeControlById(saved.clock.controlId) ? saved.clock : null;
+    setGameControlId(savedControl ? savedControl.controlId : 'none');
+    if (savedControl) clock.restore(savedControl, g.history().length);
+    else clock.reset(null);
     setMyColor(saved.myColor);
     analysesRef.current.clear();
     pendingReviewRef.current = null;
@@ -685,6 +724,7 @@ export default function App() {
         mistakes: [...mistakesRef.current.entries()],
         playerMoveCount: playerMoveCountRef.current,
         takebacks: takebacksRef.current,
+        clock: clock.snapshot(),
       });
     };
     pendingSaveRef.current = save;
@@ -817,6 +857,10 @@ export default function App() {
     setThinking(false);
     gameRef.current = new Chess();
     setResignedBy(null);
+    setFlaggedBy(null);
+    flaggedRef.current = false;
+    setGameControlId(timeControlPref);
+    clock.reset(timeControlById(timeControlPref));
     setMyColor(color);
     analysesRef.current.clear();
     pendingReviewRef.current = null;
@@ -871,6 +915,10 @@ export default function App() {
   } else if (resignedBy) {
     barScore = { mate: resignedBy === 'white' ? -1 : 1 };
     resultLabel = resignedBy === 'white' ? '0-1' : '1-0';
+  } else if (flaggedBy) {
+    const r = resultCode(game, null, flaggedBy);
+    barScore = r === '1/2-1/2' ? { cp: 0 } : { mate: r === '0-1' ? -1 : 1 };
+    resultLabel = r === '1/2-1/2' ? '½-½' : r;
   } else if (game.isCheckmate()) {
     barScore = { mate: game.turn() === 'w' ? -1 : 1 };
     resultLabel = game.turn() === 'w' ? '0-1' : '1-0';
@@ -944,7 +992,26 @@ export default function App() {
         />
         </div>
         <aside className="controls" ref={controlsRef}>
-          <p className={`status${isOver ? ' over' : ''}`}>{turnText}</p>
+          <div className={`status${isOver ? ' over' : ''}`}>
+            <span>{turnText}</span>
+            {timeControlById(gameControlId) && (
+              <span className="clocks" aria-label="Chess clock">
+                {(['engine', 'you'] as const).map((who) => {
+                  const side = (who === 'you') === (myColor === 'white') ? 'w' : 'b';
+                  const ms = side === 'w' ? clock.white : clock.black;
+                  return (
+                    <span
+                      key={who}
+                      id={`clock-${who}`}
+                      className={`clock${clock.active === side ? ' running' : ''}${ms < 20_000 ? ' low' : ''}`}
+                    >
+                      <span className="clock-who">{who === 'you' ? 'You' : 'Stockfish'}</span> {formatClock(ms)}
+                    </span>
+                  );
+                })}
+              </span>
+            )}
+          </div>
           {resumeNotice && (
             <p className="resume-note">
               {resumeNotice}
@@ -1093,6 +1160,31 @@ export default function App() {
               </select>
             </label>
           </div>
+
+          <label>
+            Time control
+            <select
+              id="time-control"
+              value={timeControlPref}
+              onChange={(e) => {
+                const id = e.target.value;
+                setTimeControlPref(id);
+                savePref('timeControl', id);
+                // Before the first move it applies to this game; otherwise from the next one.
+                if (game.history().length === 0 && !isOver) {
+                  setGameControlId(id);
+                  clock.reset(timeControlById(id));
+                }
+              }}
+            >
+              {TIME_CONTROLS.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.label}
+                </option>
+              ))}
+            </select>
+            {timeControlPref !== gameControlId && <span className="muted-note">Starts with your next game.</span>}
+          </label>
 
           <label>
             Promote pawns to

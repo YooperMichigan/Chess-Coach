@@ -33,6 +33,27 @@ export const MOVE_TIME_OPTIONS = [
   { label: 'Longer (2 s)', ms: 2000 },
 ];
 
+// Chess clock. "none" plays untimed. Increments are added after each move by the mover.
+export interface TimeControl {
+  id: string;
+  label: string;
+  baseMs: number;
+  incrementMs: number;
+}
+export const TIME_CONTROLS: TimeControl[] = [
+  { id: 'none', label: 'No clock', baseMs: 0, incrementMs: 0 },
+  { id: '3+2', label: 'Blitz 3 + 2', baseMs: 3 * 60_000, incrementMs: 2_000 },
+  { id: '5+0', label: 'Blitz 5 min', baseMs: 5 * 60_000, incrementMs: 0 },
+  { id: '10+0', label: 'Rapid 10 min', baseMs: 10 * 60_000, incrementMs: 0 },
+  { id: '15+10', label: 'Rapid 15 + 10', baseMs: 15 * 60_000, incrementMs: 10_000 },
+  { id: '30+0', label: 'Rapid 30 min', baseMs: 30 * 60_000, incrementMs: 0 },
+  { id: '60+0', label: 'Classical 60 min', baseMs: 60 * 60_000, incrementMs: 0 },
+];
+export const timeControlById = (id: string | null | undefined): TimeControl | null => {
+  const tc = TIME_CONTROLS.find((t) => t.id === id);
+  return tc && tc.id !== 'none' ? tc : null;
+};
+
 // Relative to the app's base URL so the build works from any path, not just the site root.
 export const STOCKFISH_WORKER_URL = `${import.meta.env.BASE_URL}stockfish/stockfish-19-lite-single.js`;
 

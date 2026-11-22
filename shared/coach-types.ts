@@ -254,4 +254,13 @@ export interface SavedGameState {
   mistakes: [number, MistakeRecord][]; // ply -> mistake
   playerMoveCount: number;
   takebacks?: number; // moves taken back this game (any makes it unrated)
+  clock?: ClockSnapshot | null; // chess clock times, if the game is timed
+}
+
+/** Chess clock state kept with the saved game. */
+export interface ClockSnapshot {
+  controlId: string; // e.g. "15+10"
+  white: number; // ms left
+  black: number;
+  started: boolean; // clocks start after White's first move
 }
